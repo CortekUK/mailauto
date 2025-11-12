@@ -62,16 +62,13 @@ export default function LoginPage() {
               Enter your credentials to access your account
             </p>
           </div>
-          {/* </CHANGE> */}
 
-          {/* Error alert */}
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
-          {/* Login form */}
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-5">
               <div className="space-y-2">
@@ -135,7 +132,6 @@ export default function LoginPage() {
                   Remember me for 30 days
                 </Label>
               </div>
-              {/* </CHANGE> */}
             </div>
 
             <Button
@@ -155,10 +151,8 @@ export default function LoginPage() {
                 </>
               )}
             </Button>
-            {/* </CHANGE> */}
           </form>
 
-          {/* Sign up link */}
           <div className="text-center pt-2">
             <p className="text-sm text-muted-foreground">
               Don't have an account?{" "}
@@ -189,12 +183,10 @@ export default function LoginPage() {
               </p>
             </div>
           </div>
-          {/* </CHANGE> */}
         </div>
       </div>
 
       <div className="hidden lg:flex items-center justify-center p-12 bg-gradient-to-br from-blue-600 via-cyan-600 to-blue-700 relative overflow-hidden">
-        {/* Background decoration */}
         <div className="absolute inset-0 bg-grid-white/10 [mask-image:radial-gradient(white,transparent_70%)]" />
 
         <div className="relative z-10 max-w-lg space-y-8 text-white">
@@ -246,7 +238,6 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
-      {/* </CHANGE> */}
     </div>
   )
 }

@@ -215,7 +215,7 @@ export function CampaignsManager() {
         <PageHeader
           title="Campaigns"
           description="Manage all your email campaigns in one place"
-          icon={Mail}
+          icon={<Mail className="h-4 w-4" />}
           variant="gradient"
           action={
             <Button

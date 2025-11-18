@@ -14,9 +14,9 @@ export function ConditionalLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <>
+    <div>
       <Sidebar />
-      <main className="lg:pl-64 transition-[padding] duration-300 has-[~aside.lg\\:w-20]:lg:pl-20">{children}</main>
-    </>
+      <main className="lg:pl-64 transition-[padding] duration-300">{children}</main>
+    </div>
   )
 }

@@ -1,9 +1,21 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+
+// Use admin client to bypass RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+)
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = supabaseAdmin
 
     const { data: campaigns, error } = await supabase
       .from("campaigns")
@@ -26,7 +38,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
+    const supabase = supabaseAdmin
     const payload = await request.json()
 
     // If id exists, update; otherwise insert
@@ -35,8 +47,13 @@ export async function POST(request: Request) {
         .from("campaigns")
         .update({
           subject: payload.subject,
-          body: payload.body,
+          from_name: payload.from_name,
+          from_email: payload.from_email,
+          preheader: payload.preheader,
+          html: payload.html,
+          text_fallback: payload.text_fallback,
           audience_id: payload.audience_id,
+          audience_type: payload.audience_type,
           scheduled_at: payload.scheduled_at,
         })
         .eq("id", payload.id)
@@ -50,8 +67,13 @@ export async function POST(request: Request) {
         .from("campaigns")
         .insert({
           subject: payload.subject,
-          body: payload.body,
+          from_name: payload.from_name,
+          from_email: payload.from_email,
+          preheader: payload.preheader,
+          html: payload.html,
+          text_fallback: payload.text_fallback,
           audience_id: payload.audience_id,
+          audience_type: payload.audience_type,
           scheduled_at: payload.scheduled_at,
           status: "draft",
         })

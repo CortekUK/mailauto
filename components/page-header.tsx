@@ -5,6 +5,7 @@ interface PageHeaderProps {
   description: string
   action?: ReactNode
   variant?: "gradient" | "accent" | "default"
+  icon?: ReactNode
 }
 
 export function PageHeader({ title, description, action, variant = "default" }: PageHeaderProps) {

@@ -1,10 +1,22 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+
+// Use admin client to bypass RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+)
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const supabase = await createClient()
+    const supabase = supabaseAdmin
 
     const { data: recipients, error } = await supabase
       .from("campaign_recipients")
@@ -12,7 +24,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         *,
         contacts (
           email,
-          first_name
+          name
         )
       `)
       .eq("campaign_id", id)

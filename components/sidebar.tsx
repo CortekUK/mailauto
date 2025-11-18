@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Send, Mail, Users, Layers, Settings, Menu, X, ChevronLeft, ChevronRight } from "lucide-react"
+import { Send, Mail, Users, Layers, Settings, Menu, X, ChevronLeft, ChevronRight, UserPlus } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -19,6 +19,7 @@ export function Sidebar() {
     { href: "/", label: "MailAuto", icon: Send, description: "Create campaigns" },
     { href: "/campaigns", label: "Campaigns", icon: Mail, description: "View all campaigns" },
     { href: "/contacts", label: "Contacts", icon: Users, description: "Manage subscribers" },
+    { href: "/subscribers", label: "Subscribers", icon: UserPlus, description: "Add subscribers" },
     { href: "/audiences", label: "Audiences", icon: Layers, description: "Saved segments" },
     { href: "/settings", label: "Settings", icon: Settings, description: "Configuration" },
   ]
@@ -42,6 +43,7 @@ export function Sidebar() {
 
       {/* Sidebar */}
       <aside
+        data-collapsed={isCollapsed}
         className={cn(
           "fixed left-0 top-0 z-40 h-screen border-r bg-background transition-all duration-300 ease-in-out lg:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full",

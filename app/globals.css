@@ -136,3 +136,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  /* Adjust main content padding when sidebar is collapsed */
+  @media (width >= 64rem) {
+    :has(aside[data-collapsed="true"]) > main {
+      padding-left: calc(var(--spacing) * 20);
+    }
+  }
+}

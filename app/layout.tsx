@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "react-hot-toast"
+import { Toaster as Sonner } from "sonner"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { ConditionalLayout } from "@/components/conditional-layout"
@@ -48,6 +49,7 @@ export default function RootLayout({
           <ConditionalLayout>{children}</ConditionalLayout>
           <Analytics />
           <Toaster />
+          <Sonner />
         </ThemeProvider>
       </body>
     </html>

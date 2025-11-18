@@ -2,7 +2,7 @@ import { mockStore } from "./mock-store"
 
 const API_BASE = process.env.API_BASE_URL || ""
 const TOKEN = process.env.API_TOKEN || ""
-const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true" || !API_BASE
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true"
 
 async function req(path: string, init?: RequestInit) {
   const headers: HeadersInit = {

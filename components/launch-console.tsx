@@ -148,6 +148,9 @@ export function LaunchConsole() {
 
     setIsSavingDraft(true)
     try {
+      // Map UI audience types to database audience types
+      const dbAudienceType = audienceType === "full" ? "all" : audienceType === "waitlist" ? "sheetdb" : "saved"
+
       const payload = {
         id: draftId || undefined,
         subject,
@@ -155,6 +158,7 @@ export function LaunchConsole() {
         from_email: fromEmail,
         preheader: preheader || undefined,
         audience_id: audienceType === "saved" ? audienceId : undefined,
+        audience_type: dbAudienceType,
         html: htmlContent,
         text_fallback: textFallback || undefined,
         scheduled_at: scheduleType === "schedule" && scheduledAt ? scheduledAt : undefined,
@@ -359,7 +363,7 @@ export function LaunchConsole() {
           <div className="flex items-start gap-4 max-w-7xl mx-auto">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <Logo size="md" />
+                <Logo />
               </div>
               <p className="mt-2 text-pretty text-base text-muted-foreground lg:text-lg max-w-3xl">
                 Create and manage email campaigns with precision

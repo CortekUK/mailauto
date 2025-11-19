@@ -24,8 +24,10 @@ import {
   MoreVertical,
   Copy,
   Filter,
+  Edit,
+  Trash2,
 } from "lucide-react"
-import { listCampaigns, duplicateCampaign } from "@/lib/api"
+import { listCampaigns, duplicateCampaign, deleteCampaign } from "@/lib/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 type Campaign = {
@@ -107,6 +109,31 @@ export function CampaignsManager() {
         variant: "destructive",
       })
     }
+  }
+
+  async function handleDelete(campaignId: string, subject: string) {
+    if (!confirm(`Are you sure you want to delete "${subject}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      await deleteCampaign(campaignId)
+      toast({
+        title: "Campaign deleted",
+        description: `"${subject}" has been deleted successfully.`,
+      })
+      loadCampaigns()
+    } catch (error: any) {
+      toast({
+        title: "Error deleting campaign",
+        description: error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
+  function handleEdit(campaignId: string) {
+    router.push(`/?campaign=${campaignId}`)
   }
 
   function getStatusBadge(status: Campaign["status"]) {
@@ -399,6 +426,17 @@ export function CampaignsManager() {
                             <Eye className="mr-2 h-4 w-4" />
                             View Details
                           </DropdownMenuItem>
+                          {(campaign.status === "draft" || campaign.status === "queued") && (
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleEdit(campaign.id)
+                              }}
+                            >
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation()
@@ -408,6 +446,18 @@ export function CampaignsManager() {
                             <Copy className="mr-2 h-4 w-4" />
                             Duplicate
                           </DropdownMenuItem>
+                          {(campaign.status === "draft" || campaign.status === "queued" || campaign.status === "failed") && (
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDelete(campaign.id, campaign.subject)
+                              }}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>

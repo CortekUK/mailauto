@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sheetDBService } from '@/lib/sheetdb/client';
 
+// Helper function to trigger sync to Supabase
+async function triggerSync(request: NextRequest) {
+  try {
+    const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+    const host = request.headers.get('host') || 'localhost:3000';
+    const baseUrl = `${protocol}://${host}`;
+
+    console.log('🔄 Auto-triggering sync to Supabase...');
+
+    // Trigger sync in background (don't await to avoid slowing down the response)
+    fetch(`${baseUrl}/api/sync/sheetdb-to-supabase`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }).catch(err => console.error('Auto-sync failed:', err));
+  } catch (error) {
+    console.error('Error triggering sync:', error);
+  }
+}
+
 // POST: Bulk create rows in SheetDB
 export async function POST(request: NextRequest) {
   try {
@@ -45,6 +64,9 @@ export async function POST(request: NextRequest) {
     const result = await sheetDBService.create(validData);
 
     console.log('Bulk upload result:', result);
+
+    // Auto-sync to Supabase
+    triggerSync(request);
 
     return NextResponse.json({
       success: true,

@@ -30,7 +30,51 @@ export async function GET() {
 
     if (error) throw error
 
-    return NextResponse.json(campaigns || [])
+    // Fetch all recipients and events for all campaigns
+    const campaignIds = campaigns?.map(c => c.id) || []
+
+    const { data: allRecipients } = await supabase
+      .from("campaign_recipients")
+      .select("campaign_id, delivery_status")
+      .in("campaign_id", campaignIds)
+
+    const { data: allEvents } = await supabase
+      .from("campaign_events")
+      .select("campaign_id, event_type, email")
+      .in("campaign_id", campaignIds)
+
+    // Calculate stats for each campaign
+    const campaignsWithStats = campaigns?.map(campaign => {
+      const recipients = allRecipients?.filter(r => r.campaign_id === campaign.id) || []
+      const events = allEvents?.filter(e => e.campaign_id === campaign.id) || []
+
+      const sent = recipients.filter(r => r.delivery_status === 'sent').length
+      const delivered = sent
+      const failures = recipients.filter(r => r.delivery_status === 'failed').length
+
+      const openEvents = events.filter(e => e.event_type === 'opened')
+      const opens = openEvents.length
+      const unique_opens = new Set(openEvents.map(e => e.email)).size
+
+      const clickEvents = events.filter(e => e.event_type === 'clicked')
+      const clicks = clickEvents.length
+      const unique_clicks = new Set(clickEvents.map(e => e.email)).size
+
+      return {
+        ...campaign,
+        stats: {
+          sent,
+          delivered,
+          opens,
+          unique_opens,
+          clicks,
+          unique_clicks,
+          failures
+        }
+      }
+    }) || []
+
+    return NextResponse.json(campaignsWithStats)
   } catch (error: any) {
     return NextResponse.json({ message: error.message }, { status: 500 })
   }

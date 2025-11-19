@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,7 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { Calendar, Clock, CheckCircle2, XCircle, Loader2, Mail, Save, Rocket, AlertCircle, Send } from "lucide-react"
-import { createOrUpdateCampaign, queueCampaign, listAudiences, listSenderEmails, sendTestEmail } from "@/lib/api"
+import { createOrUpdateCampaign, queueCampaign, listAudiences, listSenderEmails, sendTestEmail, getCampaign } from "@/lib/api"
 import { validateCampaign } from "@/lib/validation"
 import { Logo } from "@/components/logo"
 
@@ -46,6 +47,7 @@ type SenderEmail = {
 
 export function LaunchConsole() {
   const { toast } = useToast()
+  const searchParams = useSearchParams()
 
   const [fromName, setFromName] = useState("")
   const [fromEmail, setFromEmail] = useState("")
@@ -76,6 +78,14 @@ export function LaunchConsole() {
     loadAudiences()
     loadSenderEmails()
   }, [])
+
+  // Load campaign if campaign ID is in URL query params
+  useEffect(() => {
+    const campaignId = searchParams.get('campaign')
+    if (campaignId) {
+      loadCampaignForEdit(campaignId)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -123,6 +133,46 @@ export function LaunchConsole() {
     }
   }
 
+  async function loadCampaignForEdit(campaignId: string) {
+    try {
+      const campaign = await getCampaign(campaignId)
+
+      // Populate form fields with campaign data
+      setDraftId(campaign.id)
+      setSubject(campaign.subject || "")
+      setFromName(campaign.from_name || "")
+      setFromEmail(campaign.from_email || "")
+      setHtmlContent(campaign.html || "")
+      setTextFallback(campaign.text_fallback || "")
+      setAudienceId(campaign.audience_id || "")
+
+      if (campaign.audience_id) {
+        setAudienceType("saved")
+      }
+
+      // Handle scheduled_at
+      if (campaign.scheduled_at) {
+        setScheduleType("schedule")
+        // Extract datetime without timezone conversion
+        // Input format: "2025-11-19T09:56:00+05:00"
+        // Output format: "2025-11-19T09:56" (for datetime-local input)
+        const datetimeStr = campaign.scheduled_at.substring(0, 16) // Gets "2025-11-19T09:56"
+        setScheduledAt(datetimeStr)
+      }
+
+      toast({
+        title: "Campaign loaded",
+        description: "You can now edit and save your changes",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error loading campaign",
+        description: error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
   async function handleSaveDraft(silent = false) {
     if (!subject || !fromEmail) {
       if (!silent) {
@@ -151,6 +201,22 @@ export function LaunchConsole() {
       // Map UI audience types to database audience types
       const dbAudienceType = audienceType === "full" ? "all" : audienceType === "waitlist" ? "sheetdb" : "saved"
 
+      // Handle scheduled_at with proper timezone handling
+      let scheduledAtISO = undefined
+      if (scheduleType === "schedule" && scheduledAt) {
+        // datetime-local gives us "YYYY-MM-DDTHH:MM" in user's local time
+        // We need to keep it as local time when storing
+        // Append seconds and timezone offset
+        const date = new Date(scheduledAt)
+        const tzOffset = -date.getTimezoneOffset() // offset in minutes
+        const offsetHours = Math.floor(Math.abs(tzOffset) / 60).toString().padStart(2, '0')
+        const offsetMins = (Math.abs(tzOffset) % 60).toString().padStart(2, '0')
+        const offsetSign = tzOffset >= 0 ? '+' : '-'
+
+        // Format: "2025-11-19T09:56:00+05:00"
+        scheduledAtISO = `${scheduledAt}:00${offsetSign}${offsetHours}:${offsetMins}`
+      }
+
       const payload = {
         id: draftId || undefined,
         subject,
@@ -161,7 +227,7 @@ export function LaunchConsole() {
         audience_type: dbAudienceType,
         html: htmlContent,
         text_fallback: textFallback || undefined,
-        scheduled_at: scheduleType === "schedule" && scheduledAt ? scheduledAt : undefined,
+        scheduled_at: scheduledAtISO,
         status: "draft",
       }
 
@@ -228,11 +294,15 @@ export function LaunchConsole() {
     setShowConfirmModal(false)
     setIsQueueing(true)
     try {
-      await queueCampaign(draftId)
+      const result = await queueCampaign(draftId)
+
+      const isScheduled = scheduleType === "schedule" && scheduledAt && new Date(scheduledAt) > new Date()
 
       toast({
-        title: "Campaign queued",
-        description: "Your campaign has been queued for sending",
+        title: isScheduled ? "Campaign scheduled" : "Campaign queued",
+        description: isScheduled
+          ? `Will be sent on ${new Date(scheduledAt).toLocaleString()}`
+          : "Your campaign is being sent now",
       })
 
       window.location.href = `/campaigns/${draftId}`

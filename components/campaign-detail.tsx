@@ -31,13 +31,13 @@ import {
   Mail,
   CheckCircle2,
   XCircle,
-  TrendingUp,
   MousePointerClick,
   AlertTriangle,
   Download,
   RotateCcw,
   Ban,
   Loader2,
+  RefreshCw,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 
@@ -77,7 +77,7 @@ interface Event {
   id: string
   event_type: string
   created_at: string
-  recipient_email: string
+  email: string
   metadata?: any
 }
 
@@ -209,18 +209,13 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     failures: 0,
   }
 
-  const openRate = stats.delivered > 0 ? ((stats.unique_opens / stats.delivered) * 100).toFixed(1) : "0.0"
-  const clickRate = stats.delivered > 0 ? ((stats.unique_clicks / stats.delivered) * 100).toFixed(1) : "0.0"
-
   const filteredRecipients =
     recipientFilter === "all"
       ? recipients
       : recipients.filter((r) => {
-          if (recipientFilter === "delivered") return r.delivery_status === "delivered"
-          if (recipientFilter === "opened") return r.opens_count > 0
-          if (recipientFilter === "clicked") return r.clicks_count > 0
-          if (recipientFilter === "bounced") return r.delivery_status === "bounced"
+          if (recipientFilter === "sent") return r.delivery_status === "sent"
           if (recipientFilter === "failed") return r.delivery_status === "failed"
+          if (recipientFilter === "pending") return r.delivery_status === "pending" || r.status === "pending"
           return true
         })
 
@@ -232,16 +227,20 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     canceled: "bg-red-100 text-red-700",
   }
 
-  // Simple opens over time data (last 7 days)
-  const opensOverTime = Array.from({ length: 7 }, (_, i) => {
+  // Delivered emails over time data (last 7 days)
+  const deliveredOverTime = Array.from({ length: 7 }, (_, i) => {
     const date = new Date()
     date.setDate(date.getDate() - (6 - i))
     const dayEvents = events.filter(
-      (e) => e.event_type === "opened" && new Date(e.created_at).toDateString() === date.toDateString(),
+      (e) => (e.event_type === "sent" || e.event_type === "delivered") && new Date(e.created_at).toDateString() === date.toDateString(),
     )
-    return { day: i, count: dayEvents.length }
+    return { day: i, count: dayEvents.length, date: date.toDateString() }
   })
-  const maxOpens = Math.max(...opensOverTime.map((d) => d.count), 1)
+  const maxDelivered = Math.max(...deliveredOverTime.map((d) => d.count), 1)
+
+  // Debug: Log the data
+  console.log('Delivered over time:', deliveredOverTime)
+  console.log('Events:', events)
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -254,10 +253,14 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               <Badge className={statusColors[campaign.status] || statusColors.draft}>{campaign.status}</Badge>
             </div>
             <p className="text-sm text-muted-foreground">
-              To: {campaign.audiences?.name || "No audience"} • From: {campaign.from_name} ({campaign.from_email})
+              To: {campaign.audiences?.name || `${recipients.length} recipients`} • From: {campaign.from_name} ({campaign.from_email})
             </p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
             <Button variant="outline" size="sm" onClick={handleDuplicate} disabled={actionLoading}>
               <Copy className="mr-2 h-4 w-4" />
               Duplicate
@@ -288,7 +291,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Sent</CardTitle>
@@ -312,26 +315,6 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Open Rate</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{openRate}%</div>
-                  <p className="text-xs text-muted-foreground">{stats.unique_opens} unique opens</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Click Rate</CardTitle>
-                  <MousePointerClick className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{clickRate}%</div>
-                  <p className="text-xs text-muted-foreground">{stats.unique_clicks} unique clicks</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Failures</CardTitle>
                   <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
@@ -344,24 +327,52 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               </Card>
             </div>
 
-            {/* Opens over time chart */}
+            {/* Delivered over time chart */}
             <Card>
               <CardHeader>
-                <CardTitle>Opens Over Time (Last 7 Days)</CardTitle>
+                <CardTitle>Delivered Over Time (Last 7 Days)</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex h-[200px] items-end justify-between gap-2">
-                  {opensOverTime.map((d, i) => (
-                    <div key={i} className="flex flex-1 flex-col items-center gap-2">
-                      <div className="relative w-full">
-                        <div
-                          className="w-full rounded-t bg-primary transition-all hover:opacity-80"
-                          style={{ height: `${(d.count / maxOpens) * 160}px` }}
-                        />
-                      </div>
-                      <span className="text-xs text-muted-foreground">D{d.day + 1}</span>
-                    </div>
-                  ))}
+                <div className="space-y-2">
+                  {/* Y-axis labels */}
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{maxDelivered > 1 ? maxDelivered : 'Delivered'}</span>
+                    <span>0</span>
+                  </div>
+
+                  {/* Chart area */}
+                  <div className="flex h-[200px] items-end justify-between gap-4 border-b-2 border-gray-700 pb-4">
+                    {deliveredOverTime.map((d, i) => {
+                      const heightPercent = maxDelivered > 0 ? (d.count / maxDelivered) * 100 : 0
+                      const barHeight = d.count > 0 ? Math.max(heightPercent, 15) : 5 // Show small bar even with 0
+
+                      return (
+                        <div key={i} className="flex flex-1 flex-col items-center gap-3">
+                          <div className="relative flex h-full w-full items-end justify-center">
+                            <div
+                              className={`w-full rounded-t-lg transition-all ${
+                                d.count > 0 ? 'bg-green-500 hover:bg-green-400 shadow-lg' : 'bg-gray-700'
+                              }`}
+                              style={{
+                                height: `${barHeight}%`,
+                                minHeight: d.count > 0 ? '20px' : '6px',
+                                minWidth: '40px'
+                              }}
+                              title={`${d.count} delivered on ${d.date}`}
+                            />
+                          </div>
+                          <div className="text-center">
+                            <div className={`text-sm font-semibold ${d.count > 0 ? 'text-green-400' : 'text-gray-400'}`}>
+                              D{d.day + 1}
+                            </div>
+                            <div className={`text-xs ${d.count > 0 ? 'text-green-300' : 'text-gray-600'}`}>
+                              {d.count}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -372,6 +383,13 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
             <div className="flex items-center justify-between">
               <div className="flex gap-2">
                 <Button
+                  variant={recipientFilter === "sent" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setRecipientFilter("sent")}
+                >
+                  Sent
+                </Button>
+                <Button
                   variant={recipientFilter === "all" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setRecipientFilter("all")}
@@ -379,39 +397,18 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                   All ({recipients.length})
                 </Button>
                 <Button
-                  variant={recipientFilter === "delivered" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setRecipientFilter("delivered")}
-                >
-                  Delivered
-                </Button>
-                <Button
-                  variant={recipientFilter === "opened" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setRecipientFilter("opened")}
-                >
-                  Opened
-                </Button>
-                <Button
-                  variant={recipientFilter === "clicked" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setRecipientFilter("clicked")}
-                >
-                  Clicked
-                </Button>
-                <Button
-                  variant={recipientFilter === "bounced" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setRecipientFilter("bounced")}
-                >
-                  Bounced
-                </Button>
-                <Button
                   variant={recipientFilter === "failed" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setRecipientFilter("failed")}
                 >
                   Failed
+                </Button>
+                <Button
+                  variant={recipientFilter === "pending" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setRecipientFilter("pending")}
+                >
+                  Pending
                 </Button>
               </div>
               <Button variant="outline" size="sm" onClick={exportRecipientsCSV}>
@@ -488,7 +485,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                 </CardHeader>
                 <CardContent>
                   <div
-                    className="max-h-[600px] overflow-auto rounded border bg-white p-4"
+                    className="max-h-[600px] overflow-auto rounded border bg-slate-100 p-4 text-slate-900"
                     dangerouslySetInnerHTML={{ __html: campaign.html }}
                   />
                 </CardContent>
@@ -510,7 +507,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           <TabsContent value="activity">
             <Card>
               <CardHeader>
-                <CardTitle>Event Feed</CardTitle>
+                <CardTitle>Event Feed ({events.length} events)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -520,6 +517,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                     events.map((event) => (
                       <div key={event.id} className="flex items-start gap-4 border-b pb-4 last:border-0">
                         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+                          {event.event_type === "sent" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                           {event.event_type === "delivered" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                           {event.event_type === "opened" && <Mail className="h-4 w-4 text-blue-600" />}
                           {event.event_type === "clicked" && <MousePointerClick className="h-4 w-4 text-purple-600" />}
@@ -530,7 +528,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                           <div className="flex items-start justify-between">
                             <div>
                               <div className="font-medium capitalize">{event.event_type}</div>
-                              <div className="text-sm text-muted-foreground">{event.recipient_email}</div>
+                              <div className="text-sm text-muted-foreground">{event.email}</div>
                             </div>
                             <div className="text-sm text-muted-foreground">
                               {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}

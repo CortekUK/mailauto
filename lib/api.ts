@@ -214,6 +214,11 @@ export function duplicateCampaign(id: string) {
   return req(`/api/campaigns/${id}/duplicate`, { method: "POST" })
 }
 
+export function deleteCampaign(id: string) {
+  if (USE_MOCK) return Promise.resolve({ success: true })
+  return req(`/api/campaigns/${id}`, { method: "DELETE" })
+}
+
 export function resendToFailures(id: string) {
   if (USE_MOCK) return mockStore.resendToFailures(id)
   return req(`/api/campaigns/${id}/resend-failures`, { method: "POST" })

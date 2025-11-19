@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Loader2, UserPlus, Upload, Pencil, Trash2, Search, Users, RefreshCw } from 'lucide-react';
+import { Loader2, UserPlus, Upload, Pencil, Trash2, Search, Users } from 'lucide-react';
 import { CSVUpload } from '@/components/csv-upload';
 
 // Validation schema
@@ -37,7 +37,6 @@ export function SubscriberManagerV2() {
   const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null);
   const [deletingSubscriber, setDeletingSubscriber] = useState<Subscriber | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
 
   const {
     register,
@@ -193,33 +192,6 @@ export function SubscriberManagerV2() {
     }
   };
 
-  const handleSyncToSupabase = async () => {
-    setIsSyncing(true);
-    toast.loading('Syncing subscribers to Supabase...', { id: 'sync' });
-
-    try {
-      const response = await fetch('/api/sync/sheetdb-to-supabase', {
-        method: 'POST'
-      });
-
-      const result = await response.json();
-
-      if (response.ok && result.success) {
-        toast.success(
-          `Synced ${result.stats.synced} subscribers (${result.stats.new} new, ${result.stats.updated} updated)`,
-          { id: 'sync' }
-        );
-      } else {
-        toast.error(result.error || 'Sync failed', { id: 'sync' });
-      }
-    } catch (error) {
-      console.error('Sync error:', error);
-      toast.error('Failed to sync subscribers', { id: 'sync' });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const filteredSubscribers = subscribers.filter(
     (subscriber) =>
       subscriber.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -252,14 +224,6 @@ export function SubscriberManagerV2() {
               <CardDescription>Manage your subscriber list</CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={handleSyncToSupabase}
-                disabled={isSyncing}
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-                Sync to Supabase
-              </Button>
               <Button onClick={() => setIsAddDialogOpen(true)}>
                 <UserPlus className="h-4 w-4 mr-2" />
                 Add Subscriber

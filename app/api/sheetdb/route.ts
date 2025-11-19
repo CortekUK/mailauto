@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sheetDBService } from '@/lib/sheetdb/client';
 
+// Helper function to trigger sync to Supabase
+async function triggerSync(request: NextRequest) {
+  try {
+    const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+    const host = request.headers.get('host') || 'localhost:3000';
+    const baseUrl = `${protocol}://${host}`;
+
+    console.log('🔄 Auto-triggering sync to Supabase...');
+
+    // Trigger sync in background (don't await to avoid slowing down the response)
+    fetch(`${baseUrl}/api/sync/sheetdb-to-supabase`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }).catch(err => console.error('Auto-sync failed:', err));
+  } catch (error) {
+    console.error('Error triggering sync:', error);
+  }
+}
+
 // GET: Read data from SheetDB
 export async function GET(request: NextRequest) {
   try {
@@ -49,6 +68,9 @@ export async function POST(request: NextRequest) {
     const result = await sheetDBService.create(data, { sheet });
     console.log('POST result:', result);
 
+    // Auto-sync to Supabase
+    triggerSync(request);
+
     return NextResponse.json({ success: true, data: result }, { status: 201 });
   } catch (error: any) {
     console.error('SheetDB POST error:', error);
@@ -74,6 +96,9 @@ export async function PUT(request: NextRequest) {
 
     const result = await sheetDBService.update(columnName, columnValue, data, { sheet });
 
+    // Auto-sync to Supabase
+    triggerSync(request);
+
     return NextResponse.json({ success: true, data: result }, { status: 200 });
   } catch (error: any) {
     console.error('SheetDB PUT error:', error);
@@ -98,6 +123,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     const result = await sheetDBService.delete(columnName, columnValue, { sheet });
+
+    // Auto-sync to Supabase
+    triggerSync(request);
 
     return NextResponse.json({ success: true, data: result }, { status: 200 });
   } catch (error: any) {

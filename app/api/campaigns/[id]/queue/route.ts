@@ -60,6 +60,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ message: "No recipients found for this campaign" }, { status: 400 })
     }
 
+    // Delete existing recipients and events first (in case campaign is being re-queued after editing)
+    await supabase
+      .from("campaign_recipients")
+      .delete()
+      .eq("campaign_id", id)
+
+    await supabase
+      .from("campaign_events")
+      .delete()
+      .eq("campaign_id", id)
+
     // Create campaign recipients records
     const recipientRecords = recipients.map(contact => ({
       campaign_id: id,
@@ -91,13 +102,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (error) throw error
 
-    // Trigger the send process in the background
-    // In production, you'd use a job queue like BullMQ, but for now we'll call the send endpoint
+    // Check if campaign is scheduled for future
+    const isScheduled = campaign.scheduled_at && new Date(campaign.scheduled_at) > new Date()
+
+    if (isScheduled) {
+      console.log(`Campaign ${id} scheduled for ${campaign.scheduled_at}. Will be sent by cron job.`)
+      return NextResponse.json({
+        ...data,
+        message: `Campaign scheduled for ${new Date(campaign.scheduled_at).toLocaleString()}`
+      })
+    }
+
+    // Trigger immediate send for campaigns without future scheduling
     const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http'
     const host = request.headers.get('host') || 'localhost:3000'
     const baseUrl = `${protocol}://${host}`
 
-    console.log(`Triggering send for campaign ${id} at ${baseUrl}/api/campaigns/${id}/send`)
+    console.log(`Triggering immediate send for campaign ${id} at ${baseUrl}/api/campaigns/${id}/send`)
 
     // Trigger send endpoint (non-blocking)
     fetch(`${baseUrl}/api/campaigns/${id}/send`, {

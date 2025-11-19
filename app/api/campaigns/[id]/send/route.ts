@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendEmail, replaceTemplateVariables } from '@/lib/resend-client';
+import { sendEmail, replaceTemplateVariables } from '@/lib/nodemailer-client';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -78,7 +78,8 @@ export async function POST(
     }
 
     const recipients = campaignRecipients?.map((cr: any) => ({
-      id: cr.contacts?.id || cr.contact_id,
+      recipient_id: cr.id, // campaign_recipient table ID
+      contact_id: cr.contacts?.id || cr.contact_id,
       email: cr.email || cr.contacts?.email,
       name: cr.name || cr.contacts?.name
     })) || [];
@@ -130,21 +131,24 @@ export async function POST(
             .from('campaign_recipients')
             .update({
               status: 'sent',
+              delivery_status: 'sent',
               sent_at: new Date().toISOString(),
               provider_message_id: result.messageId
             })
-            .eq('campaign_id', campaignId)
-            .eq('email', recipient.email);
+            .eq('id', recipient.recipient_id);
 
           // Log event
-          await supabaseAdmin
+          const { error: eventError } = await supabaseAdmin
             .from('campaign_events')
             .insert({
               campaign_id: campaignId,
               event_type: 'sent',
-              email: recipient.email,
-              provider_event_id: result.messageId
+              email: recipient.email
             });
+
+          if (eventError) {
+            console.error('Failed to log event:', eventError);
+          }
 
           sentCount++;
           console.log(`✅ Sent to ${recipient.email}`);
@@ -154,11 +158,11 @@ export async function POST(
             .from('campaign_recipients')
             .update({
               status: 'failed',
+              delivery_status: 'failed',
               failed_at: new Date().toISOString(),
               error_message: result.error
             })
-            .eq('campaign_id', campaignId)
-            .eq('email', recipient.email);
+            .eq('id', recipient.recipient_id);
 
           // Log event
           await supabaseAdmin
@@ -166,8 +170,7 @@ export async function POST(
             .insert({
               campaign_id: campaignId,
               event_type: 'failed',
-              email: recipient.email,
-              provider_metadata: { error: result.error }
+              email: recipient.email
             });
 
           failedCount++;
@@ -185,11 +188,11 @@ export async function POST(
           .from('campaign_recipients')
           .update({
             status: 'failed',
+            delivery_status: 'failed',
             failed_at: new Date().toISOString(),
             error_message: error.message
           })
-          .eq('campaign_id', campaignId)
-          .eq('email', recipient.email);
+          .eq('id', recipient.recipient_id);
       }
     }
 

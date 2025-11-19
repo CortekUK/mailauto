@@ -1,0 +1,19 @@
+{
+  "functions": {
+    "app/api/campaigns/[id]/send/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/campaigns/[id]/queue/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/cron/send-scheduled/route.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/send-scheduled",
+      "schedule": "* * * * *"
+    }
+  ]
+}

@@ -105,6 +105,46 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Step 3.5: Handle deletions - Remove contacts from Supabase that are no longer in SheetDB
+    console.log('🗑️ Checking for deleted contacts...');
+
+    // Get all email addresses from SheetDB
+    const sheetDBEmails = new Set(contactsToSync.map(c => c.email));
+
+    // Get all contacts in Supabase with source='sheetdb'
+    const { data: supabaseContacts } = await supabaseAdmin
+      .from('contacts')
+      .select('id, email')
+      .eq('source', 'sheetdb');
+
+    // Find contacts that are in Supabase but not in SheetDB anymore
+    const contactsToDelete = supabaseContacts?.filter(
+      contact => !sheetDBEmails.has(contact.email)
+    ) || [];
+
+    let deletedCount = 0;
+    if (contactsToDelete.length > 0) {
+      console.log(`🗑️ Found ${contactsToDelete.length} contacts to delete`);
+
+      for (const contact of contactsToDelete) {
+        try {
+          const { error } = await supabaseAdmin
+            .from('contacts')
+            .delete()
+            .eq('id', contact.id);
+
+          if (error) {
+            console.error(`❌ Failed to delete ${contact.email}:`, error);
+          } else {
+            deletedCount++;
+            console.log(`✅ Deleted ${contact.email}`);
+          }
+        } catch (err: any) {
+          console.error(`❌ Error deleting ${contact.email}:`, err);
+        }
+      }
+    }
+
     const syncEndTime = new Date();
     const duration = syncEndTime.getTime() - syncStartTime.getTime();
 
@@ -113,6 +153,7 @@ export async function POST(request: NextRequest) {
       synced: newCount + updatedCount,
       new: newCount,
       updated: updatedCount,
+      deleted: deletedCount,
       failed: failedCount,
       duration: `${duration}ms`
     };
@@ -128,6 +169,7 @@ export async function POST(request: NextRequest) {
       failed_records: failedCount,
       new_records: newCount,
       updated_records: updatedCount,
+      deleted_records: deletedCount,
       error_details: errors.length > 0 ? errors : null,
       started_at: syncStartTime.toISOString(),
       completed_at: syncEndTime.toISOString()

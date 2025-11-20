@@ -1,7 +1,8 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect, Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,13 +10,24 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Mail, Lock, ArrowRight, CheckCircle2, Shield } from "lucide-react"
 import Link from "next/link"
+import toast from "react-hot-toast"
 
-export default function LoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Show success message if coming from registration
+    if (searchParams.get("registered") === "true") {
+      toast.success("Registration successful! Please log in to continue.", {
+        duration: 4000,
+      })
+    }
+  }, [searchParams])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,13 +39,22 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
+        options: {
+          persistSession: rememberMe,
+        },
       })
 
       if (error) {
         setError(error.message)
         setLoading(false)
       } else {
-        window.location.href = "/"
+        toast.success("Login successful! Welcome back.", {
+          duration: 3000,
+        })
+        // Small delay to show the toast before redirect
+        setTimeout(() => {
+          window.location.href = "/"
+        }, 500)
       }
     } catch (err) {
       setError("An unexpected error occurred")
@@ -239,5 +260,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>}>
+      <LoginForm />
+    </Suspense>
   )
 }

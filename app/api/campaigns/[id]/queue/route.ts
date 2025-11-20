@@ -29,19 +29,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ message: "Campaign not found" }, { status: 404 })
     }
 
-    // Get recipients based on audience type
+    // Get recipients based on audience
     let recipients: any[] = []
 
-    if (campaign.audience_type === "sheetdb" || campaign.audience_type === "all") {
-      // Get all active contacts
-      const { data: contacts } = await supabase
-        .from("contacts")
-        .select("id, email, name")
-        .eq("status", "active")
-
-      recipients = contacts || []
-    } else if (campaign.audience_type === "saved" && campaign.audience_id) {
-      // Get contacts from specific audience
+    if (campaign.audience_id) {
+      // Get contacts from specific audience (always use audience_id if present)
       const { data: audienceContacts } = await supabase
         .from("audience_contacts")
         .select(`
@@ -54,6 +46,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         .eq("audience_id", campaign.audience_id)
 
       recipients = audienceContacts?.map((ac: any) => ac.contact).filter(Boolean) || []
+    } else if (campaign.audience_type === "sheetdb" || campaign.audience_type === "all") {
+      // Fallback: Get all active contacts (only if no audience_id)
+      const { data: contacts } = await supabase
+        .from("contacts")
+        .select("id, email, name")
+        .eq("status", "active")
+
+      recipients = contacts || []
     }
 
     if (recipients.length === 0) {

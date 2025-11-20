@@ -18,7 +18,6 @@ export function Sidebar() {
   const links = [
     { href: "/", label: "MailAuto", icon: Send, description: "Create campaigns" },
     { href: "/campaigns", label: "Campaigns", icon: Mail, description: "View all campaigns" },
-    { href: "/contacts", label: "Contacts", icon: Users, description: "Manage subscribers" },
     { href: "/subscribers", label: "Subscribers", icon: UserPlus, description: "Add subscribers" },
     { href: "/audiences", label: "Audiences", icon: Layers, description: "Saved segments" },
     { href: "/settings", label: "Settings", icon: Settings, description: "Configuration" },

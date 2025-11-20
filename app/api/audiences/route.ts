@@ -12,16 +12,25 @@ export async function GET() {
 
     if (error) throw error
 
-    // Get preview count for each audience (simplified - in production, evaluate rules)
-    const audiencesWithCounts = await Promise.all(
+    // Get contact IDs for each audience
+    const audiencesWithContacts = await Promise.all(
       (audiences || []).map(async (audience) => {
-        const { count } = await supabase.from("contacts").select("*", { count: "exact", head: true })
+        const { data: audienceContacts } = await supabase
+          .from("audience_contacts")
+          .select("contact_id")
+          .eq("audience_id", audience.id)
 
-        return { ...audience, preview_count: count || 0 }
+        const contactIds = (audienceContacts || []).map((ac) => ac.contact_id)
+
+        return {
+          ...audience,
+          contact_ids: contactIds,
+          preview_count: contactIds.length
+        }
       }),
     )
 
-    return NextResponse.json(audiencesWithCounts)
+    return NextResponse.json(audiencesWithContacts)
   } catch (error: any) {
     return NextResponse.json({ message: error.message }, { status: 500 })
   }
@@ -32,22 +41,55 @@ export async function POST(request: Request) {
     const supabase = await createClient()
     const payload = await request.json()
 
-    const { data, error } = await supabase
+    console.log("Creating audience with payload:", payload)
+
+    // Create the audience
+    const { data: audience, error: audienceError } = await supabase
       .from("audiences")
       .insert({
         name: payload.name,
         description: payload.description,
-        rules: payload.rules || {},
+        type: 'manual',
+        contact_count: payload.contact_ids?.length || 0,
       })
       .select()
       .single()
 
-    if (error) throw error
+    if (audienceError) {
+      console.error("Failed to create audience:", audienceError)
+      throw audienceError
+    }
 
-    // Get preview count
-    const { count } = await supabase.from("contacts").select("*", { count: "exact", head: true })
+    console.log("Audience created:", audience.id)
 
-    return NextResponse.json({ ...data, preview_count: count || 0 })
+    // Add contacts to audience
+    if (payload.contact_ids && payload.contact_ids.length > 0) {
+      const audienceContactsData = payload.contact_ids.map((contactId: string) => ({
+        audience_id: audience.id,
+        contact_id: contactId,
+      }))
+
+      console.log(`Inserting ${audienceContactsData.length} contact relationships`)
+
+      const { error: contactsError } = await supabase
+        .from("audience_contacts")
+        .insert(audienceContactsData)
+
+      if (contactsError) {
+        console.error("Failed to insert audience contacts:", contactsError)
+        throw contactsError
+      }
+
+      console.log(`Successfully linked ${audienceContactsData.length} contacts to audience`)
+    } else {
+      console.log("No contacts to add to audience")
+    }
+
+    return NextResponse.json({
+      ...audience,
+      contact_ids: payload.contact_ids || [],
+      preview_count: payload.contact_ids?.length || 0
+    })
   } catch (error: any) {
     return NextResponse.json({ message: error.message }, { status: 500 })
   }

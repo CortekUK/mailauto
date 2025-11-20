@@ -19,6 +19,7 @@ import { Calendar, Clock, CheckCircle2, XCircle, Loader2, Mail, Save, Rocket, Al
 import { createOrUpdateCampaign, queueCampaign, listAudiences, listSenderEmails, sendTestEmail, getCampaign } from "@/lib/api"
 import { validateCampaign } from "@/lib/validation"
 import { Logo } from "@/components/logo"
+import { RichTextEditor } from "@/components/rich-text-editor"
 
 type Campaign = {
   id: string
@@ -36,6 +37,7 @@ type Audience = {
   name: string
   description?: string
   preview_count?: number
+  type?: string
 }
 
 type SenderEmail = {
@@ -53,7 +55,6 @@ export function LaunchConsole() {
   const [fromEmail, setFromEmail] = useState("")
   const [subject, setSubject] = useState("")
   const [preheader, setPreheader] = useState("")
-  const [audienceType, setAudienceType] = useState<"waitlist" | "full" | "saved">("full")
   const [audienceId, setAudienceId] = useState("")
   const [htmlContent, setHtmlContent] = useState("")
   const [textFallback, setTextFallback] = useState("")
@@ -89,7 +90,7 @@ export function LaunchConsole() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (subject && fromEmail && (audienceType !== "saved" || audienceId)) {
+      if (subject && fromEmail && audienceId) {
         handleSaveDraft(true)
       }
     }, 10000)
@@ -98,7 +99,6 @@ export function LaunchConsole() {
   }, [
     subject,
     fromEmail,
-    audienceType,
     audienceId,
     fromName,
     htmlContent,
@@ -146,10 +146,6 @@ export function LaunchConsole() {
       setTextFallback(campaign.text_fallback || "")
       setAudienceId(campaign.audience_id || "")
 
-      if (campaign.audience_id) {
-        setAudienceType("saved")
-      }
-
       // Handle scheduled_at
       if (campaign.scheduled_at) {
         setScheduleType("schedule")
@@ -185,11 +181,11 @@ export function LaunchConsole() {
       return
     }
 
-    if (audienceType === "saved" && !audienceId) {
+    if (!audienceId) {
       if (!silent) {
         toast({
           title: "Missing audience",
-          description: "Please select a saved audience",
+          description: "Please select an audience",
           variant: "destructive",
         })
       }
@@ -198,8 +194,11 @@ export function LaunchConsole() {
 
     setIsSavingDraft(true)
     try {
-      // Map UI audience types to database audience types
-      const dbAudienceType = audienceType === "full" ? "all" : audienceType === "waitlist" ? "sheetdb" : "saved"
+      // Get the selected audience to access its type
+      const selectedAudience = audiences.find(a => a.id === audienceId)
+      // Map audience types to database-allowed values
+      // 'manual' audiences are custom/saved audiences
+      const dbAudienceType = selectedAudience?.type === 'manual' ? 'saved' : (selectedAudience?.type || 'saved')
 
       // Handle scheduled_at with proper timezone handling
       let scheduledAtISO = undefined
@@ -223,7 +222,7 @@ export function LaunchConsole() {
         from_name: fromName,
         from_email: fromEmail,
         preheader: preheader || undefined,
-        audience_id: audienceType === "saved" ? audienceId : undefined,
+        audience_id: audienceId,
         audience_type: dbAudienceType,
         html: htmlContent,
         text_fallback: textFallback || undefined,
@@ -258,7 +257,7 @@ export function LaunchConsole() {
     const validation = validateCampaign({
       subject,
       fromEmail,
-      audienceType,
+      audienceType: audienceId ? "saved" : undefined,
       audienceId,
       htmlContent,
       scheduleType,
@@ -353,21 +352,6 @@ export function LaunchConsole() {
     }
   }
 
-  function insertVariable(variable: string) {
-    const textarea = document.getElementById("html-content") as HTMLTextAreaElement
-    if (!textarea) return
-
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const newValue = htmlContent.substring(0, start) + variable + htmlContent.substring(end)
-    setHtmlContent(newValue)
-
-    setTimeout(() => {
-      textarea.focus()
-      textarea.setSelectionRange(start + variable.length, start + variable.length)
-    }, 0)
-  }
-
   function getStatusBadge(status: Campaign["status"]) {
     const variants: Record<
       Campaign["status"],
@@ -402,12 +386,13 @@ export function LaunchConsole() {
     return `Saved ${diff} min ago`
   }
 
-  const resolvedCount = audienceType === "saved" ? audiences.find((a) => a.id === audienceId)?.preview_count || 0 : 0
+  const selectedAudience = audiences.find((a) => a.id === audienceId)
+  const resolvedCount = selectedAudience?.preview_count || 0
 
   const validation = validateCampaign({
     subject,
     fromEmail,
-    audienceType,
+    audienceType: audienceId ? "saved" : undefined,
     audienceId,
     htmlContent,
     scheduleType,
@@ -581,84 +566,59 @@ export function LaunchConsole() {
                 </div>
 
                 <div className="space-y-2.5">
-                  <Label htmlFor="audience-type" className="text-sm font-medium">
+                  <Label htmlFor="audience" className="text-sm font-medium">
                     Audience <span className="text-destructive">*</span>
                   </Label>
-                  <Select
-                    value={audienceType}
-                    onValueChange={(v: any) => {
-                      setAudienceType(v)
-                      setAudienceId("")
-                      setValidationErrors((prev) => ({ ...prev, audience: "" }))
-                    }}
-                  >
-                    <SelectTrigger id="audience-type" className="h-11">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="waitlist">Waitlist</SelectItem>
-                      <SelectItem value="full">Full List</SelectItem>
-                      <SelectItem value="saved">Saved Audience</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {audienceType === "saved" && (
-                  <div className="space-y-2.5">
-                    <Label htmlFor="saved-audience" className="text-sm font-medium">
-                      Select Audience
-                    </Label>
-                    {isLoadingAudiences ? (
-                      <Skeleton className="h-11 w-full" />
-                    ) : (
-                      <>
-                        <Select
-                          value={audienceId}
-                          onValueChange={(value) => {
-                            setAudienceId(value)
-                            setValidationErrors((prev) => ({ ...prev, audience: "" }))
-                          }}
+                  {isLoadingAudiences ? (
+                    <Skeleton className="h-11 w-full" />
+                  ) : (
+                    <>
+                      <Select
+                        value={audienceId}
+                        onValueChange={(value) => {
+                          setAudienceId(value)
+                          setValidationErrors((prev) => ({ ...prev, audience: "" }))
+                        }}
+                      >
+                        <SelectTrigger
+                          id="audience"
+                          className={`h-11 ${validationErrors.audience ? "border-destructive ring-destructive/20" : ""}`}
                         >
-                          <SelectTrigger
-                            id="saved-audience"
-                            className={`h-11 ${validationErrors.audience ? "border-destructive ring-destructive/20" : ""}`}
-                          >
-                            <SelectValue placeholder="Choose an audience" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {audiences.map((aud) => (
-                              <SelectItem key={aud.id} value={aud.id}>
-                                <div className="flex items-center justify-between gap-4 w-full">
-                                  <span>{aud.name}</span>
-                                  {aud.preview_count !== undefined && (
-                                    <Badge variant="secondary" className="text-xs font-medium">
-                                      {aud.preview_count} contacts
-                                    </Badge>
-                                  )}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {audienceId && resolvedCount > 0 && (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-3 py-2 rounded-md">
-                            <CheckCircle2 className="h-4 w-4 text-primary" />
-                            <span>
-                              Will send to <span className="font-semibold text-foreground">{resolvedCount}</span>{" "}
-                              contacts
-                            </span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {validationErrors.audience && (
-                      <p className="text-xs text-destructive flex items-center gap-1.5 font-medium">
-                        <AlertCircle className="h-3.5 w-3.5" />
-                        {validationErrors.audience}
-                      </p>
-                    )}
-                  </div>
-                )}
+                          <SelectValue placeholder="Choose an audience" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {audiences.map((aud) => (
+                            <SelectItem key={aud.id} value={aud.id}>
+                              <div className="flex items-center justify-between gap-4 w-full">
+                                <span>{aud.name}</span>
+                                {aud.preview_count !== undefined && (
+                                  <Badge variant="secondary" className="text-xs font-medium">
+                                    {aud.preview_count} contacts
+                                  </Badge>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {audienceId && resolvedCount > 0 && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-3 py-2 rounded-md">
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                          <span>
+                            Will send to <span className="font-semibold text-foreground">{resolvedCount}</span>{" "}
+                            contacts
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {validationErrors.audience && (
+                    <p className="text-xs text-destructive flex items-center gap-1.5 font-medium">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      {validationErrors.audience}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -679,18 +639,16 @@ export function LaunchConsole() {
               <div className="space-y-5 pl-13">
                 <div className="space-y-2.5">
                   <Label htmlFor="html-content" className="text-sm font-medium">
-                    HTML Content <span className="text-destructive">*</span>
+                    Email Content <span className="text-destructive">*</span>
                   </Label>
-                  <Textarea
-                    id="html-content"
+                  <RichTextEditor
                     value={htmlContent}
-                    onChange={(e) => {
-                      setHtmlContent(e.target.value)
+                    onChange={(value) => {
+                      setHtmlContent(value)
                       setValidationErrors((prev) => ({ ...prev, htmlBody: "" }))
                     }}
-                    placeholder="<h1>Hello {{first_name}}!</h1><p>Your email content...</p>"
-                    rows={10}
-                    className={`font-mono text-sm resize-none ${validationErrors.htmlBody ? "border-destructive ring-destructive/20" : ""}`}
+                    placeholder="Start composing your email... You can use formatting tools above."
+                    className={validationErrors.htmlBody ? "border-destructive ring-destructive/20" : ""}
                   />
                   {validationErrors.htmlBody && (
                     <p className="text-xs text-destructive flex items-center gap-1.5 font-medium">
@@ -698,35 +656,9 @@ export function LaunchConsole() {
                       {validationErrors.htmlBody}
                     </p>
                   )}
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => insertVariable("{{first_name}}")}
-                      className="h-9 gap-1.5 text-xs font-mono"
-                    >
-                      <span className="text-muted-foreground">+</span> first_name
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => insertVariable("{{book_link}}")}
-                      className="h-9 gap-1.5 text-xs font-mono"
-                    >
-                      <span className="text-muted-foreground">+</span> book_link
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => insertVariable("{{discount_code}}")}
-                      className="h-9 gap-1.5 text-xs font-mono"
-                    >
-                      <span className="text-muted-foreground">+</span> discount_code
-                    </Button>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Use the toolbar above to format your email. Insert variables like {"{{"} name {"}} "}using the variable buttons.
+                  </p>
                 </div>
 
                 <div className="space-y-2.5">
@@ -898,13 +830,7 @@ export function LaunchConsole() {
         open={showConfirmModal}
         onOpenChange={setShowConfirmModal}
         title="Confirm Campaign Send"
-        description={`You're about to send to ${
-          audienceType === "saved"
-            ? `${resolvedCount} contacts`
-            : audienceType === "waitlist"
-              ? "waitlist contacts"
-              : "all contacts"
-        }${
+        description={`You're about to send to ${selectedAudience?.name || "selected audience"} (${resolvedCount} contacts)${
           scheduleType === "schedule" && scheduledAt ? ` on ${new Date(scheduledAt).toLocaleString()}` : " immediately"
         }. Proceed?`}
         onConfirm={confirmQueue}

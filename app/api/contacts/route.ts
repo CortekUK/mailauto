@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     let query = supabase.from("contacts").select("*").order("created_at", { ascending: false })
 
     if (search) {
-      query = query.or(`email.ilike.%${search}%,first_name.ilike.%${search}%`)
+      query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`)
     }
 
     const { data: contacts, error } = await query
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       .from("contacts")
       .insert({
         email: body.email,
-        first_name: body.first_name,
+        name: body.name || body.first_name,
         tags: body.tags || [],
       })
       .select()

@@ -16,7 +16,6 @@ export default function SignUpPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -47,39 +46,15 @@ export default function SignUpPage() {
 
       if (error) {
         setError(error.message)
+        setLoading(false)
       } else {
-        setSuccess(true)
+        // Registration successful, redirect to login
+        window.location.href = "/auth/login?registered=true"
       }
     } catch (err) {
       setError("An unexpected error occurred")
-    } finally {
       setLoading(false)
     }
-  }
-
-  if (success) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-8 bg-background">
-        <div className="w-full max-w-md">
-          <div className="bg-card border border-border rounded-lg shadow-lg p-8 text-center">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/25">
-              <CheckCircle2 className="w-8 h-8 text-white" />
-            </div>
-            <h2 className="text-2xl font-bold mb-3">Check your email</h2>
-            <p className="text-muted-foreground mb-6 leading-relaxed">
-              We've sent a confirmation link to <strong className="text-foreground">{email}</strong>. Please check your
-              inbox and click the link to verify your account.
-            </p>
-            <Link href="/auth/login">
-              <Button className="w-full h-12 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700">
-                Go to Login
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (

@@ -70,7 +70,7 @@ interface Recipient {
   clicks_count: number
   last_event_at?: string
   error?: string
-  contacts?: { email: string; first_name?: string }
+  contacts?: { email: string; name?: string }
 }
 
 interface Event {
@@ -174,7 +174,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     const headers = ["Email", "First Name", "Status", "Opens", "Clicks", "Last Event"]
     const rows = filteredRecipients.map((r) => [
       r.contacts?.email || r.email,
-      r.contacts?.first_name || "",
+      r.contacts?.name || "",
       r.delivery_status,
       r.opens_count,
       r.clicks_count,
@@ -441,8 +441,8 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                         <TableCell>
                           <div>
                             <div className="font-medium">{recipient.contacts?.email || recipient.email}</div>
-                            {recipient.contacts?.first_name && (
-                              <div className="text-sm text-muted-foreground">{recipient.contacts.first_name}</div>
+                            {recipient.contacts?.name && (
+                              <div className="text-sm text-muted-foreground">{recipient.contacts.name}</div>
                             )}
                           </div>
                         </TableCell>

@@ -66,69 +66,29 @@ export function sendTestEmail(payload: {
   })
 }
 
-export function listContacts(query?: string) {
+// Subscribers are managed via SheetDB and synced to Supabase
+// For audiences, we fetch the synced data directly
+export async function listContacts(query?: string) {
   if (USE_MOCK) return mockStore.listContacts(query)
-  const params = query ? `?search=${encodeURIComponent(query)}` : ""
-  return req(`/api/contacts${params}`)
-}
 
-export function createContact(payload: { email: string; first_name?: string; tags?: string[] }) {
-  if (USE_MOCK) return mockStore.createContact(payload)
-  return req("/api/contacts", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  })
-}
+  // Get synced subscribers from Supabase contacts table (used by audiences)
+  const response = await fetch('/api/subscribers/list')
+  const result = await response.json()
 
-export function updateContact(
-  id: string,
-  payload: { first_name?: string; tags?: string[]; unsubscribed_at?: string | null },
-) {
-  if (USE_MOCK) return mockStore.updateContact(id, payload)
-  return req(`/api/contacts/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  })
-}
+  if (!response.ok) {
+    throw new Error(result.message || 'Failed to fetch subscribers')
+  }
 
-export function deleteContacts(ids: string[]) {
-  if (USE_MOCK) return mockStore.deleteContacts(ids)
-  return req("/api/contacts/bulk-delete", {
-    method: "POST",
-    body: JSON.stringify({ ids }),
-  })
-}
+  // Filter by query if provided
+  if (query) {
+    const q = query.toLowerCase()
+    return result.filter((s: any) =>
+      s.email?.toLowerCase().includes(q) ||
+      s.name?.toLowerCase().includes(q)
+    )
+  }
 
-export function bulkAddTag(ids: string[], tag: string) {
-  if (USE_MOCK) return mockStore.bulkAddTag(ids, tag)
-  return req("/api/contacts/bulk-tag", {
-    method: "POST",
-    body: JSON.stringify({ ids, tag, action: "add" }),
-  })
-}
-
-export function bulkRemoveTag(ids: string[], tag: string) {
-  if (USE_MOCK) return mockStore.bulkRemoveTag(ids, tag)
-  return req("/api/contacts/bulk-tag", {
-    method: "POST",
-    body: JSON.stringify({ ids, tag, action: "remove" }),
-  })
-}
-
-export function bulkUnsubscribe(ids: string[]) {
-  if (USE_MOCK) return mockStore.bulkUnsubscribe(ids)
-  return req("/api/contacts/bulk-unsubscribe", {
-    method: "POST",
-    body: JSON.stringify({ ids }),
-  })
-}
-
-export function importContacts(formData: FormData) {
-  if (USE_MOCK) return mockStore.importContacts(formData)
-  return req("/api/contacts/import", {
-    method: "POST",
-    body: formData,
-  })
+  return result
 }
 
 export function listAudiences() {

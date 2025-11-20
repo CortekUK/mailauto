@@ -7,6 +7,7 @@ import { Toaster as Sonner } from "sonner"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { ConditionalLayout } from "@/components/conditional-layout"
+import { AuthProvider } from "@/contexts/auth-context"
 
 const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
@@ -46,10 +47,12 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`font-sans antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <ConditionalLayout>{children}</ConditionalLayout>
-          <Analytics />
-          <Toaster />
-          <Sonner />
+          <AuthProvider>
+            <ConditionalLayout>{children}</ConditionalLayout>
+            <Analytics />
+            <Toaster />
+            <Sonner />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

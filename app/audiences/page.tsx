@@ -1,4 +1,4 @@
-import { AudiencesManager } from "@/components/audiences-manager"
+import { AudiencesManagerSimple } from "@/components/audiences-manager-simple"
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
@@ -6,5 +6,5 @@ export const metadata: Metadata = {
 }
 
 export default function AudiencesPage() {
-  return <AudiencesManager />
+  return <AudiencesManagerSimple />
 }

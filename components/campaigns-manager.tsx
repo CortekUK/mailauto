@@ -173,7 +173,12 @@ export function CampaignsManager() {
       },
     }
 
-    const config = variants[status]
+    const config = variants[status] || {
+      label: status || "Unknown",
+      variant: "secondary" as const,
+      icon: Clock,
+      className: "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300",
+    }
     const Icon = config.icon
 
     return (

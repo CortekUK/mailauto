@@ -32,20 +32,51 @@ export function CSVUpload({ onUploadComplete }: CSVUploadProps) {
       complete: (results) => {
         const data = results.data as any[];
 
-        // Validate that we have name and email columns
+        // Validate that we have required columns
         if (data.length === 0) {
           toast.error('CSV file is empty');
           return;
         }
 
         const firstRow = data[0];
-        if (!('name' in firstRow) || !('email' in firstRow)) {
-          toast.error('CSV must have "name" and "email" columns');
+        // Support both old format (name, email) and new format (First Name, Last Name, Email 1)
+        const hasOldFormat = ('name' in firstRow) && ('email' in firstRow);
+        const hasNewFormat = ('First Name' in firstRow) && ('Email 1' in firstRow);
+
+        if (!hasOldFormat && !hasNewFormat) {
+          toast.error('CSV must have either "First Name" + "Email 1" columns OR "name" + "email" columns');
           return;
         }
 
-        // Filter out rows without name or email
-        const validData = data.filter(row => row.name && row.email);
+        // Filter and normalize data based on format
+        const validData = data.filter(row => {
+          if (hasNewFormat) {
+            return row['First Name'] && row['Email 1'];
+          }
+          return row.name && row.email;
+        }).map(row => {
+          if (hasNewFormat) {
+            return {
+              'First Name': row['First Name'],
+              'Last Name': row['Last Name'] || '',
+              'Email 1': row['Email 1'],
+              'Phone 1': row['Phone 1'] || '',
+              'Company': row['Company'] || '',
+              'Address 1 - City': row['Address 1 - City'] || '',
+              'Address 1 - State/Region': row['Address 1 - State/Region'] || '',
+              'Address 1 - Country': row['Address 1 - Country'] || '',
+            };
+          }
+          // Convert old format to new format
+          const nameParts = row.name.split(' ');
+          return {
+            'First Name': nameParts[0] || '',
+            'Last Name': nameParts.slice(1).join(' ') || '',
+            'Email 1': row.email,
+            'Phone 1': row.phone || '',
+            'Company': row.company || '',
+          };
+        });
 
         if (validData.length === 0) {
           toast.error('No valid entries found in CSV');
@@ -78,13 +109,45 @@ export function CSVUpload({ onUploadComplete }: CSVUploadProps) {
         try {
           const data = results.data as any[];
 
-          // Filter valid entries
+          // Detect format
+          const firstRow = data[0];
+          const hasNewFormat = ('First Name' in firstRow) && ('Email 1' in firstRow);
+
+          // Filter and normalize valid entries
           const validData = data
-            .filter(row => row.name && row.email)
-            .map(row => ({
-              name: row.name.trim(),
-              email: row.email.trim(),
-            }));
+            .filter(row => {
+              if (hasNewFormat) {
+                return row['First Name'] && row['Email 1'];
+              }
+              return row.name && row.email;
+            })
+            .map(row => {
+              if (hasNewFormat) {
+                return {
+                  'First Name': row['First Name']?.trim() || '',
+                  'Last Name': row['Last Name']?.trim() || '',
+                  'Email 1': row['Email 1']?.trim() || '',
+                  'Phone 1': row['Phone 1']?.trim() || '',
+                  'Company': row['Company']?.trim() || '',
+                  'Address 1 - City': row['Address 1 - City']?.trim() || '',
+                  'Address 1 - State/Region': row['Address 1 - State/Region']?.trim() || '',
+                  'Address 1 - Country': row['Address 1 - Country']?.trim() || '',
+                  'Email subscriber status': 'subscribed',
+                  'Created At (UTC+0)': new Date().toISOString(),
+                };
+              }
+              // Convert old format to new format
+              const nameParts = row.name.trim().split(' ');
+              return {
+                'First Name': nameParts[0] || '',
+                'Last Name': nameParts.slice(1).join(' ') || '',
+                'Email 1': row.email.trim(),
+                'Phone 1': row.phone?.trim() || '',
+                'Company': row.company?.trim() || '',
+                'Email subscriber status': 'subscribed',
+                'Created At (UTC+0)': new Date().toISOString(),
+              };
+            });
 
           if (validData.length === 0) {
             toast.error('No valid entries to upload');
@@ -129,7 +192,7 @@ export function CSVUpload({ onUploadComplete }: CSVUploadProps) {
   };
 
   const downloadTemplate = () => {
-    const csv = 'name,email\nJohn Doe,john@example.com\nJane Smith,jane@example.com';
+    const csv = 'First Name,Last Name,Email 1,Phone 1,Company,Address 1 - City,Address 1 - State/Region,Address 1 - Country\nJohn,Doe,john@example.com,+1234567890,Acme Inc,New York,NY,USA\nJane,Smith,jane@example.com,+0987654321,Tech Corp,Los Angeles,CA,USA';
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -187,8 +250,9 @@ export function CSVUpload({ onUploadComplete }: CSVUploadProps) {
             <div className="border rounded-lg p-3 bg-muted/50 max-h-40 overflow-y-auto">
               {preview.map((row, index) => (
                 <div key={index} className="text-sm py-1 flex gap-3">
-                  <span className="font-medium">{row.name}</span>
-                  <span className="text-muted-foreground">{row.email}</span>
+                  <span className="font-medium">{row['First Name']} {row['Last Name']}</span>
+                  <span className="text-muted-foreground">{row['Email 1']}</span>
+                  {row['Company'] && <span className="text-xs text-muted-foreground">({row['Company']})</span>}
                 </div>
               ))}
             </div>
@@ -216,8 +280,9 @@ export function CSVUpload({ onUploadComplete }: CSVUploadProps) {
 
         <div className="rounded-lg border bg-muted/50 p-3">
           <p className="text-xs text-muted-foreground leading-relaxed">
-            <strong>Note:</strong> Your CSV file should have headers "name" and "email" in the first row.
-            Rows without both fields will be skipped.
+            <strong>Note:</strong> Your CSV file should have headers "First Name", "Last Name", and "Email 1" in the first row.
+            Optional columns: "Phone 1", "Company", "Address 1 - City", "Address 1 - State/Region", "Address 1 - Country".
+            Rows without First Name and Email will be skipped.
           </p>
         </div>
     </div>

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { sheetDBService } from "@/lib/sheetdb/client"
 
 // Use admin client to bypass RLS
 const supabaseAdmin = createClient(
@@ -33,27 +34,59 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     let recipients: any[] = []
 
     if (campaign.audience_id) {
-      // Get contacts from specific audience (always use audience_id if present)
-      const { data: audienceContacts } = await supabase
-        .from("audience_contacts")
-        .select(`
-          contact:contacts (
-            id,
-            email,
-            name
-          )
-        `)
-        .eq("audience_id", campaign.audience_id)
+      // Get audience with contact_emails
+      const { data: audience } = await supabase
+        .from("audiences")
+        .select("contact_emails")
+        .eq("id", campaign.audience_id)
+        .single()
 
-      recipients = audienceContacts?.map((ac: any) => ac.contact).filter(Boolean) || []
+      if (audience?.contact_emails) {
+        // Parse contact_emails (stored as JSON array of emails)
+        const contactEmails = typeof audience.contact_emails === 'string'
+          ? JSON.parse(audience.contact_emails)
+          : audience.contact_emails
+
+        // Fetch all subscribers from SheetDB
+        const sheetData = await sheetDBService.read()
+
+        // Filter to only those emails in the audience
+        const emailSet = new Set(contactEmails.map((e: string) => e.toLowerCase()))
+
+        recipients = (sheetData || [])
+          .filter((row: any) => {
+            const email = row['Email 1']?.toLowerCase()
+            return email && emailSet.has(email)
+          })
+          .map((row: any) => ({
+            id: row['Email 1'], // Use email as ID
+            email: row['Email 1'],
+            name: `${row['First Name'] || ''} ${row['Last Name'] || ''}`.trim() || null,
+            first_name: row['First Name'],
+            last_name: row['Last Name'],
+            company: row['Company'],
+            city: row['Address 1 - City'],
+            state: row['Address 1 - State/Region'],
+            country: row['Address 1 - Country'],
+          }))
+      }
     } else if (campaign.audience_type === "sheetdb" || campaign.audience_type === "all") {
-      // Fallback: Get all active contacts (only if no audience_id)
-      const { data: contacts } = await supabase
-        .from("contacts")
-        .select("id, email, name")
-        .eq("status", "active")
+      // Fallback: Get all subscribers from SheetDB
+      const sheetData = await sheetDBService.read()
 
-      recipients = contacts || []
+      recipients = (sheetData || [])
+        .filter((row: any) => row['Email 1'])
+        .map((row: any) => ({
+          id: row['Email 1'],
+          email: row['Email 1'],
+          name: `${row['First Name'] || ''} ${row['Last Name'] || ''}`.trim() || null,
+          first_name: row['First Name'],
+          last_name: row['Last Name'],
+          company: row['Company'],
+          city: row['Address 1 - City'],
+          state: row['Address 1 - State/Region'],
+          country: row['Address 1 - Country'],
+        }))
     }
 
     if (recipients.length === 0) {
@@ -71,14 +104,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .delete()
       .eq("campaign_id", id)
 
-    // Create campaign recipients records
+    // Create campaign recipients records (contact_id can be null for SheetDB contacts)
     const recipientRecords = recipients.map(contact => ({
       campaign_id: id,
-      contact_id: contact.id,
+      contact_id: null, // We don't use Supabase contact IDs anymore
       email: contact.email,
       name: contact.name,
+      first_name: contact.first_name || null,
+      last_name: contact.last_name || null,
+      company: contact.company || null,
       status: "pending"
     }))
+
+    console.log("Inserting recipient records:", JSON.stringify(recipientRecords.slice(0, 2), null, 2))
 
     const { error: insertError } = await supabase
       .from("campaign_recipients")
@@ -86,7 +124,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (insertError) {
       console.error("Failed to create recipient records:", insertError)
-      return NextResponse.json({ message: "Failed to create recipient records" }, { status: 500 })
+      console.error("Error details:", JSON.stringify(insertError, null, 2))
+      return NextResponse.json({
+        message: "Failed to create recipient records",
+        error: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint
+      }, { status: 500 })
     }
 
     // Update campaign status to queued and set total recipients

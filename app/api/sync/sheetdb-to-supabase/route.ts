@@ -42,13 +42,41 @@ export async function POST(request: NextRequest) {
     console.log(`✅ Found ${sheetDBSubscribers.length} subscribers in SheetDB`);
 
     // Step 2: Prepare contact data for Supabase
-    const contactsToSync = sheetDBSubscribers.map((subscriber: any) => ({
-      email: subscriber.email?.toLowerCase().trim(),
-      name: subscriber.name?.trim() || null,
-      status: 'active',
-      source: 'sheetdb',
-      tags: []
-    })).filter((contact: any) => contact.email); // Remove any without email
+    // Map from new SheetDB schema (with spaces in column names) to Supabase
+    const contactsToSync = sheetDBSubscribers.map((subscriber: any) => {
+      // Handle new column names with spaces
+      const firstName = subscriber['First Name'] || '';
+      const lastName = subscriber['Last Name'] || '';
+      const email = subscriber['Email 1'] || subscriber.email || '';
+      const phone = subscriber['Phone 1'] || '';
+      const company = subscriber['Company'] || '';
+      const city = subscriber['Address 1 - City'] || '';
+      const state = subscriber['Address 1 - State/Region'] || '';
+      const zip = subscriber['Address 1 - Zip'] || '';
+      const country = subscriber['Address 1 - Country'] || '';
+      const labels = subscriber['Labels'] || '';
+      const emailStatus = subscriber['Email subscriber status'] || 'active';
+      const source = subscriber['Source'] || 'sheetdb';
+      const language = subscriber['Language'] || '';
+
+      return {
+        email: email?.toLowerCase().trim(),
+        name: `${firstName} ${lastName}`.trim() || null,
+        first_name: firstName?.trim() || null,
+        last_name: lastName?.trim() || null,
+        phone: phone?.trim() || null,
+        company: company?.trim() || null,
+        city: city?.trim() || null,
+        state: state?.trim() || null,
+        zip: zip?.trim() || null,
+        country: country?.trim() || null,
+        labels: labels?.trim() || null,
+        status: emailStatus === 'subscribed' || emailStatus === 'active' ? 'active' : (emailStatus || 'active'),
+        source: source?.trim() || 'sheetdb',
+        language: language?.trim() || null,
+        tags: []
+      };
+    }).filter((contact: any) => contact.email); // Remove any without email
 
     console.log(`📝 Prepared ${contactsToSync.length} valid contacts for sync`);
 
@@ -68,11 +96,21 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (existing) {
-          // Update existing contact
+          // Update existing contact with all new fields
           const { error } = await supabaseAdmin
             .from('contacts')
             .update({
               name: contact.name,
+              first_name: contact.first_name,
+              last_name: contact.last_name,
+              phone: contact.phone,
+              company: contact.company,
+              city: contact.city,
+              state: contact.state,
+              zip: contact.zip,
+              country: contact.country,
+              labels: contact.labels,
+              language: contact.language,
               updated_at: new Date().toISOString()
             })
             .eq('email', contact.email);

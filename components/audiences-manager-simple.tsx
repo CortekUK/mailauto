@@ -18,6 +18,9 @@ type Contact = {
   id: string
   email: string
   name?: string
+  first_name?: string
+  last_name?: string
+  company?: string
   status: string
 }
 
@@ -62,8 +65,11 @@ export function AudiencesManagerSimple() {
       setFilteredContacts(
         contacts.filter(
           (c) =>
-            c.email.toLowerCase().includes(query) ||
-            c.name?.toLowerCase().includes(query)
+            c.email?.toLowerCase().includes(query) ||
+            c.name?.toLowerCase().includes(query) ||
+            c.first_name?.toLowerCase().includes(query) ||
+            c.last_name?.toLowerCase().includes(query) ||
+            c.company?.toLowerCase().includes(query)
         )
       )
     }
@@ -527,30 +533,34 @@ export function AudiencesManagerSimple() {
                     </div>
                   ) : (
                     <div className="divide-y">
-                      {filteredContacts.map((contact) => (
-                        <div
-                          key={contact.id}
-                          className="flex items-center gap-3 p-4 hover:bg-accent/50 transition-colors cursor-pointer"
-                          onClick={() => toggleContact(contact.id)}
-                        >
-                          <Checkbox
-                            checked={selectedContactIds.has(contact.id)}
-                            onCheckedChange={() => toggleContact(contact.id)}
-                            className="h-5 w-5"
-                          />
-                          <div className="flex-1">
-                            <p className="font-medium">{contact.name || contact.email}</p>
-                            {contact.name && (
-                              <p className="text-sm text-muted-foreground">{contact.email}</p>
+                      {filteredContacts.map((contact) => {
+                        const displayName = contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.email
+                        return (
+                          <div
+                            key={contact.id}
+                            className="flex items-center gap-3 p-4 hover:bg-accent/50 transition-colors cursor-pointer"
+                            onClick={() => toggleContact(contact.id)}
+                          >
+                            <Checkbox
+                              checked={selectedContactIds.has(contact.id)}
+                              onCheckedChange={() => toggleContact(contact.id)}
+                              className="h-5 w-5"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{displayName}</p>
+                              <p className="text-sm text-muted-foreground truncate">{contact.email}</p>
+                              {contact.company && (
+                                <p className="text-xs text-muted-foreground truncate">{contact.company}</p>
+                              )}
+                            </div>
+                            {(contact.status === "subscribed" || contact.status === "active") && (
+                              <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full flex-shrink-0">
+                                Active
+                              </span>
                             )}
                           </div>
-                          {contact.status === "subscribed" && (
-                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                              Active
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </Card>

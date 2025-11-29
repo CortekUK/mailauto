@@ -16,17 +16,34 @@ import { Loader2, RefreshCw, UserPlus, Upload, Pencil, Trash2 } from 'lucide-rea
 import { useEffect } from 'react';
 import { CSVUpload } from '@/components/csv-upload';
 
-// Validation schema
+// Validation schema - updated for new SheetDB columns
 const subscriberSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
+  firstName: z.string().min(1, 'First name is required'),
+  lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email('Please enter a valid email address'),
+  phone: z.string().optional(),
+  company: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  country: z.string().optional(),
 });
 
 type SubscriberFormData = z.infer<typeof subscriberSchema>;
 
 interface Subscriber {
-  name: string;
-  email: string;
+  'First Name': string;
+  'Last Name': string;
+  'Email 1': string;
+  'Phone 1'?: string;
+  'Company'?: string;
+  'Address 1 - City'?: string;
+  'Address 1 - State/Region'?: string;
+  'Address 1 - Country'?: string;
+  'Labels'?: string;
+  'Email subscriber status'?: string;
+  // Computed for display
+  name?: string;
+  email?: string;
 }
 
 export function SubscriberManager() {
@@ -92,8 +109,16 @@ export function SubscriberManager() {
         },
         body: JSON.stringify({
           data: {
-            name: data.name,
-            email: data.email,
+            'First Name': data.firstName,
+            'Last Name': data.lastName,
+            'Email 1': data.email,
+            'Phone 1': data.phone || '',
+            'Company': data.company || '',
+            'Address 1 - City': data.city || '',
+            'Address 1 - State/Region': data.state || '',
+            'Address 1 - Country': data.country || '',
+            'Email subscriber status': 'subscribed',
+            'Created At (UTC+0)': new Date().toISOString(),
           },
         }),
       });
@@ -118,8 +143,14 @@ export function SubscriberManager() {
 
   const handleEditClick = (subscriber: Subscriber) => {
     setEditingSubscriber(subscriber);
-    setValue('name', subscriber.name);
-    setValue('email', subscriber.email);
+    setValue('firstName', subscriber['First Name'] || '');
+    setValue('lastName', subscriber['Last Name'] || '');
+    setValue('email', subscriber['Email 1'] || '');
+    setValue('phone', subscriber['Phone 1'] || '');
+    setValue('company', subscriber['Company'] || '');
+    setValue('city', subscriber['Address 1 - City'] || '');
+    setValue('state', subscriber['Address 1 - State/Region'] || '');
+    setValue('country', subscriber['Address 1 - Country'] || '');
   };
 
   const handleEditSubmit = async (data: SubscriberFormData) => {
@@ -134,11 +165,17 @@ export function SubscriberManager() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          columnName: 'email',
-          columnValue: editingSubscriber.email,
+          columnName: 'Email 1',
+          columnValue: editingSubscriber['Email 1'],
           data: {
-            name: data.name,
-            email: data.email,
+            'First Name': data.firstName,
+            'Last Name': data.lastName,
+            'Email 1': data.email,
+            'Phone 1': data.phone || '',
+            'Company': data.company || '',
+            'Address 1 - City': data.city || '',
+            'Address 1 - State/Region': data.state || '',
+            'Address 1 - Country': data.country || '',
           },
         }),
       });
@@ -177,8 +214,8 @@ export function SubscriberManager() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          columnName: 'email',
-          columnValue: deletingSubscriber.email,
+          columnName: 'Email 1',
+          columnValue: deletingSubscriber['Email 1'],
         }),
       });
 
@@ -220,26 +257,40 @@ export function SubscriberManager() {
               <CardHeader>
                 <CardTitle>Add New Subscriber</CardTitle>
                 <CardDescription>
-                  Enter the subscriber's name and email address
+                  Enter the subscriber's information
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Name</Label>
-                    <Input
-                      id="name"
-                      placeholder="John Doe"
-                      {...register('name')}
-                      disabled={isSubmitting}
-                    />
-                    {errors.name && (
-                      <p className="text-sm text-red-500">{errors.name.message}</p>
-                    )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">First Name *</Label>
+                      <Input
+                        id="firstName"
+                        placeholder="John"
+                        {...register('firstName')}
+                        disabled={isSubmitting}
+                      />
+                      {errors.firstName && (
+                        <p className="text-sm text-red-500">{errors.firstName.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">Last Name *</Label>
+                      <Input
+                        id="lastName"
+                        placeholder="Doe"
+                        {...register('lastName')}
+                        disabled={isSubmitting}
+                      />
+                      {errors.lastName && (
+                        <p className="text-sm text-red-500">{errors.lastName.message}</p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
+                    <Label htmlFor="email">Email *</Label>
                     <Input
                       id="email"
                       type="email"
@@ -250,6 +301,57 @@ export function SubscriberManager() {
                     {errors.email && (
                       <p className="text-sm text-red-500">{errors.email.message}</p>
                     )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input
+                        id="phone"
+                        placeholder="+1 234 567 890"
+                        {...register('phone')}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="company">Company</Label>
+                      <Input
+                        id="company"
+                        placeholder="Company name"
+                        {...register('company')}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="city">City</Label>
+                      <Input
+                        id="city"
+                        placeholder="New York"
+                        {...register('city')}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="state">State/Region</Label>
+                      <Input
+                        id="state"
+                        placeholder="NY"
+                        {...register('state')}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="country">Country</Label>
+                      <Input
+                        id="country"
+                        placeholder="USA"
+                        {...register('country')}
+                        disabled={isSubmitting}
+                      />
+                    </div>
                   </div>
 
                   <Button type="submit" className="w-full" disabled={isSubmitting}>
@@ -321,40 +423,52 @@ export function SubscriberManager() {
               </div>
             ) : (
               <div className="space-y-4 max-h-[600px] overflow-y-auto">
-                {subscribers.map((subscriber, index) => (
-                  <div
-                    key={subscriber.email || index}
-                    className="flex items-center gap-3 p-4 border rounded-lg hover:bg-accent/50 transition-colors"
-                  >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-medium">
-                      {subscriber.name?.charAt(0).toUpperCase() || 'U'}
+                {subscribers.map((subscriber, index) => {
+                  const displayName = `${subscriber['First Name'] || ''} ${subscriber['Last Name'] || ''}`.trim() || 'Unknown';
+                  const displayEmail = subscriber['Email 1'] || '';
+                  const displayCompany = subscriber['Company'] || '';
+                  const displayCity = subscriber['Address 1 - City'] || '';
+
+                  return (
+                    <div
+                      key={displayEmail || index}
+                      className="flex items-center gap-3 p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-medium">
+                        {(subscriber['First Name']?.charAt(0) || 'U').toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{displayName}</div>
+                        <div className="text-sm text-muted-foreground truncate">{displayEmail}</div>
+                        {(displayCompany || displayCity) && (
+                          <div className="text-xs text-muted-foreground truncate">
+                            {[displayCompany, displayCity].filter(Boolean).join(' • ')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleEditClick(subscriber)}
+                          className="h-8 w-8 p-0"
+                          title="Edit subscriber"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeleteClick(subscriber)}
+                          className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                          title="Delete subscriber"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{subscriber.name}</div>
-                      <div className="text-sm text-muted-foreground truncate">{subscriber.email}</div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleEditClick(subscriber)}
-                        className="h-8 w-8 p-0"
-                        title="Edit subscriber"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDeleteClick(subscriber)}
-                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                        title="Delete subscriber"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -363,7 +477,7 @@ export function SubscriberManager() {
 
       {/* Edit Dialog */}
       <Dialog open={!!editingSubscriber} onOpenChange={(open) => !open && setEditingSubscriber(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Subscriber</DialogTitle>
             <DialogDescription>
@@ -372,21 +486,35 @@ export function SubscriberManager() {
           </DialogHeader>
 
           <form onSubmit={handleSubmit(handleEditSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Name</Label>
-              <Input
-                id="edit-name"
-                placeholder="John Doe"
-                {...register('name')}
-                disabled={isSubmitting}
-              />
-              {errors.name && (
-                <p className="text-sm text-red-500">{errors.name.message}</p>
-              )}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-firstName">First Name *</Label>
+                <Input
+                  id="edit-firstName"
+                  placeholder="John"
+                  {...register('firstName')}
+                  disabled={isSubmitting}
+                />
+                {errors.firstName && (
+                  <p className="text-sm text-red-500">{errors.firstName.message}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-lastName">Last Name *</Label>
+                <Input
+                  id="edit-lastName"
+                  placeholder="Doe"
+                  {...register('lastName')}
+                  disabled={isSubmitting}
+                />
+                {errors.lastName && (
+                  <p className="text-sm text-red-500">{errors.lastName.message}</p>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-email">Email</Label>
+              <Label htmlFor="edit-email">Email *</Label>
               <Input
                 id="edit-email"
                 type="email"
@@ -397,6 +525,57 @@ export function SubscriberManager() {
               {errors.email && (
                 <p className="text-sm text-red-500">{errors.email.message}</p>
               )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Phone</Label>
+                <Input
+                  id="edit-phone"
+                  placeholder="+1 234 567 890"
+                  {...register('phone')}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-company">Company</Label>
+                <Input
+                  id="edit-company"
+                  placeholder="Company name"
+                  {...register('company')}
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-city">City</Label>
+                <Input
+                  id="edit-city"
+                  placeholder="New York"
+                  {...register('city')}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-state">State/Region</Label>
+                <Input
+                  id="edit-state"
+                  placeholder="NY"
+                  {...register('state')}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-country">Country</Label>
+                <Input
+                  id="edit-country"
+                  placeholder="USA"
+                  {...register('country')}
+                  disabled={isSubmitting}
+                />
+              </div>
             </div>
 
             <DialogFooter>
@@ -437,11 +616,13 @@ export function SubscriberManager() {
             <div className="py-4">
               <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/50">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-medium">
-                  {deletingSubscriber.name?.charAt(0).toUpperCase() || 'U'}
+                  {(deletingSubscriber['First Name']?.charAt(0) || 'U').toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{deletingSubscriber.name}</div>
-                  <div className="text-sm text-muted-foreground truncate">{deletingSubscriber.email}</div>
+                  <div className="font-medium truncate">
+                    {`${deletingSubscriber['First Name'] || ''} ${deletingSubscriber['Last Name'] || ''}`.trim() || 'Unknown'}
+                  </div>
+                  <div className="text-sm text-muted-foreground truncate">{deletingSubscriber['Email 1']}</div>
                 </div>
               </div>
             </div>

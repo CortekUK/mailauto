@@ -12,23 +12,26 @@ export async function GET() {
 
     if (error) throw error
 
-    // Get contact IDs for each audience
-    const audiencesWithContacts = await Promise.all(
-      (audiences || []).map(async (audience) => {
-        const { data: audienceContacts } = await supabase
-          .from("audience_contacts")
-          .select("contact_id")
-          .eq("audience_id", audience.id)
-
-        const contactIds = (audienceContacts || []).map((ac) => ac.contact_id)
-
-        return {
-          ...audience,
-          contact_ids: contactIds,
-          preview_count: contactIds.length
+    // Return audiences with contact_emails parsed from JSON
+    const audiencesWithContacts = (audiences || []).map((audience) => {
+      // Parse contact_emails if it's stored as JSON string
+      let contactEmails: string[] = []
+      if (audience.contact_emails) {
+        try {
+          contactEmails = typeof audience.contact_emails === 'string'
+            ? JSON.parse(audience.contact_emails)
+            : audience.contact_emails
+        } catch {
+          contactEmails = []
         }
-      }),
-    )
+      }
+
+      return {
+        ...audience,
+        contact_ids: contactEmails, // Use emails as IDs for compatibility
+        preview_count: contactEmails.length
+      }
+    })
 
     return NextResponse.json(audiencesWithContacts)
   } catch (error: any) {
@@ -43,14 +46,18 @@ export async function POST(request: Request) {
 
     console.log("Creating audience with payload:", payload)
 
-    // Create the audience
+    // Store emails directly in the audiences table (contact_ids are actually emails from SheetDB)
+    const contactEmails = payload.contact_ids || []
+
+    // Create the audience with contact_emails stored as JSON
     const { data: audience, error: audienceError } = await supabase
       .from("audiences")
       .insert({
         name: payload.name,
         description: payload.description,
         type: 'manual',
-        contact_count: payload.contact_ids?.length || 0,
+        contact_count: contactEmails.length,
+        contact_emails: contactEmails, // Store emails directly
       })
       .select()
       .single()
@@ -60,35 +67,12 @@ export async function POST(request: Request) {
       throw audienceError
     }
 
-    console.log("Audience created:", audience.id)
-
-    // Add contacts to audience
-    if (payload.contact_ids && payload.contact_ids.length > 0) {
-      const audienceContactsData = payload.contact_ids.map((contactId: string) => ({
-        audience_id: audience.id,
-        contact_id: contactId,
-      }))
-
-      console.log(`Inserting ${audienceContactsData.length} contact relationships`)
-
-      const { error: contactsError } = await supabase
-        .from("audience_contacts")
-        .insert(audienceContactsData)
-
-      if (contactsError) {
-        console.error("Failed to insert audience contacts:", contactsError)
-        throw contactsError
-      }
-
-      console.log(`Successfully linked ${audienceContactsData.length} contacts to audience`)
-    } else {
-      console.log("No contacts to add to audience")
-    }
+    console.log("Audience created:", audience.id, "with", contactEmails.length, "contacts")
 
     return NextResponse.json({
       ...audience,
-      contact_ids: payload.contact_ids || [],
-      preview_count: payload.contact_ids?.length || 0
+      contact_ids: contactEmails,
+      preview_count: contactEmails.length
     })
   } catch (error: any) {
     return NextResponse.json({ message: error.message }, { status: 500 })

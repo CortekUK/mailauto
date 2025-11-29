@@ -42,14 +42,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate each row has name and email
-    const invalidRows = data.filter(row => !row.name || !row.email);
+    // Validate each row has required fields (support both old and new format)
+    const invalidRows = data.filter(row => {
+      // New format: First Name and Email 1
+      if (row['First Name'] !== undefined && row['Email 1'] !== undefined) {
+        return !row['First Name'] || !row['Email 1'];
+      }
+      // Old format: name and email
+      return !row.name || !row.email;
+    });
     if (invalidRows.length > 0) {
       console.log(`Found ${invalidRows.length} invalid rows`);
     }
 
-    // Filter to only valid rows
-    const validData = data.filter(row => row.name && row.email);
+    // Filter to only valid rows (support both formats)
+    const validData = data.filter(row => {
+      if (row['First Name'] !== undefined && row['Email 1'] !== undefined) {
+        return row['First Name'] && row['Email 1'];
+      }
+      return row.name && row.email;
+    });
 
     if (validData.length === 0) {
       return NextResponse.json(

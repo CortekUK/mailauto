@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendEmail, replaceTemplateVariables } from '@/lib/nodemailer-client';
+import { sendEmail, replaceTemplateVariables } from '@/lib/brevo-client';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -81,7 +81,14 @@ export async function POST(
       recipient_id: cr.id, // campaign_recipient table ID
       contact_id: cr.contacts?.id || cr.contact_id,
       email: cr.email || cr.contacts?.email,
-      name: cr.name || cr.contacts?.name
+      name: cr.name || cr.contacts?.name,
+      first_name: cr.contacts?.first_name,
+      last_name: cr.contacts?.last_name,
+      phone: cr.contacts?.phone,
+      company: cr.contacts?.company,
+      city: cr.contacts?.city,
+      state: cr.contacts?.state,
+      country: cr.contacts?.country,
     })) || [];
 
     console.log(`👥 Found ${recipients.length} recipients`);
@@ -104,11 +111,17 @@ export async function POST(
 
     for (const recipient of recipients) {
       try {
-        // Replace template variables
+        // Replace template variables - support for new schema
         const variables = {
-          first_name: recipient.name?.split(' ')[0] || '',
-          name: recipient.name || '',
-          email: recipient.email
+          first_name: recipient.first_name || recipient.name?.split(' ')[0] || '',
+          last_name: recipient.last_name || recipient.name?.split(' ').slice(1).join(' ') || '',
+          name: recipient.name || `${recipient.first_name || ''} ${recipient.last_name || ''}`.trim(),
+          email: recipient.email,
+          phone: recipient.phone || '',
+          company: recipient.company || '',
+          city: recipient.city || '',
+          state: recipient.state || '',
+          country: recipient.country || '',
         };
 
         const personalizedHtml = replaceTemplateVariables(campaign.html, variables);
@@ -116,7 +129,7 @@ export async function POST(
           ? replaceTemplateVariables(campaign.text_fallback, variables)
           : undefined;
 
-        // Send email via Resend
+        // Send email via Brevo
         const result = await sendEmail({
           to: recipient.email,
           from: campaign.from_email,

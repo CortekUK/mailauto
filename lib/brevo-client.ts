@@ -11,6 +11,23 @@ function getBrevoClient(): TransactionalEmailsApi {
   return apiInstance;
 }
 
+// Attachment type for email
+export interface EmailAttachment {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  size: number;
+}
+
+// Helper function to fetch attachment content and convert to base64
+async function fetchAttachmentAsBase64(url: string): Promise<string> {
+  const response = await fetch(url);
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  return buffer.toString('base64');
+}
+
 // Helper function to send a single email
 export async function sendEmail({
   to,
@@ -18,12 +35,14 @@ export async function sendEmail({
   subject,
   html,
   text,
+  attachments,
 }: {
   to: string;
   from: string;
   subject: string;
   html: string;
   text?: string;
+  attachments?: EmailAttachment[];
 }) {
   try {
     const client = getBrevoClient();
@@ -35,6 +54,19 @@ export async function sendEmail({
       htmlContent: html,
       textContent: text,
     };
+
+    // Add attachments if provided
+    if (attachments && attachments.length > 0) {
+      const attachmentPromises = attachments.map(async (att) => {
+        const content = await fetchAttachmentAsBase64(att.url);
+        return {
+          name: att.name,
+          content: content,
+        };
+      });
+
+      sendSmtpEmail.attachment = await Promise.all(attachmentPromises);
+    }
 
     const result = await client.sendTransacEmail(sendSmtpEmail);
 
@@ -60,6 +92,7 @@ export async function sendBatchEmails(
     subject: string;
     html: string;
     text?: string;
+    attachments?: EmailAttachment[];
   }>,
   delayMs: number = 100 // Delay between emails to avoid rate limiting
 ) {

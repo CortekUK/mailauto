@@ -19,7 +19,7 @@ import { Calendar, Clock, CheckCircle2, XCircle, Loader2, Mail, Save, Rocket, Al
 import { createOrUpdateCampaign, queueCampaign, listAudiences, listSenderEmails, sendTestEmail, getCampaign } from "@/lib/api"
 import { validateCampaign } from "@/lib/validation"
 import { Logo } from "@/components/logo"
-import { RichTextEditor } from "@/components/rich-text-editor"
+import { RichTextEditor, Attachment } from "@/components/rich-text-editor"
 
 type Campaign = {
   id: string
@@ -61,6 +61,7 @@ export function LaunchConsole() {
   const [scheduleType, setScheduleType] = useState<"now" | "schedule">("now")
   const [scheduledAt, setScheduledAt] = useState("")
   const [testEmail, setTestEmail] = useState("")
+  const [attachments, setAttachments] = useState<Attachment[]>([])
 
   const [audiences, setAudiences] = useState<Audience[]>([])
   const [senderEmails, setSenderEmails] = useState<SenderEmail[]>([])
@@ -107,6 +108,7 @@ export function LaunchConsole() {
     scheduleType,
     scheduledAt,
     draftId,
+    attachments,
   ])
 
   async function loadAudiences() {
@@ -145,6 +147,7 @@ export function LaunchConsole() {
       setHtmlContent(campaign.html || "")
       setTextFallback(campaign.text_fallback || "")
       setAudienceId(campaign.audience_id || "")
+      setAttachments(campaign.attachments || [])
 
       // Handle scheduled_at
       if (campaign.scheduled_at) {
@@ -227,6 +230,7 @@ export function LaunchConsole() {
         html: htmlContent,
         text_fallback: textFallback || undefined,
         scheduled_at: scheduledAtISO,
+        attachments,
         status: "draft",
       }
 
@@ -649,6 +653,8 @@ export function LaunchConsole() {
                     }}
                     placeholder="Start composing your email... You can use formatting tools above."
                     className={validationErrors.htmlBody ? "border-destructive ring-destructive/20" : ""}
+                    attachments={attachments}
+                    onAttachmentsChange={setAttachments}
                   />
                   {validationErrors.htmlBody && (
                     <p className="text-xs text-destructive flex items-center gap-1.5 font-medium">

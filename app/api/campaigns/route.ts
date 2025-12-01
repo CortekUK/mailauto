@@ -99,6 +99,7 @@ export async function POST(request: Request) {
           audience_id: payload.audience_id,
           audience_type: payload.audience_type,
           scheduled_at: payload.scheduled_at,
+          attachments: payload.attachments || [],
         })
         .eq("id", payload.id)
         .select()
@@ -119,6 +120,7 @@ export async function POST(request: Request) {
           audience_id: payload.audience_id,
           audience_type: payload.audience_type,
           scheduled_at: payload.scheduled_at,
+          attachments: payload.attachments || [],
           status: "draft",
         })
         .select()

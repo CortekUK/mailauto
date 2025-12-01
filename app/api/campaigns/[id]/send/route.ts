@@ -135,7 +135,8 @@ export async function POST(
           from: campaign.from_email,
           subject: campaign.subject,
           html: personalizedHtml,
-          text: personalizedText
+          text: personalizedText,
+          attachments: campaign.attachments || undefined
         });
 
         if (result.success) {

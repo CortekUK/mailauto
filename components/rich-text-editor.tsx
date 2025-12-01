@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
 import {
   Bold,
   Italic,
@@ -18,19 +19,57 @@ import {
   Code,
   Undo,
   Redo,
+  Paperclip,
+  Image,
+  X,
+  FileText,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+export interface Attachment {
+  id: string
+  name: string
+  size: number
+  type: string
+  url: string
+}
 
 interface RichTextEditorProps {
   value: string
   onChange: (value: string) => void
   placeholder?: string
   className?: string
+  attachments?: Attachment[]
+  onAttachmentsChange?: (attachments: Attachment[]) => void
 }
 
-export function RichTextEditor({ value, onChange, placeholder, className }: RichTextEditorProps) {
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 B"
+  const k = 1024
+  const sizes = ["B", "KB", "MB", "GB"]
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i]
+}
+
+function getFileIcon(type: string) {
+  if (type.startsWith("image/")) return Image
+  return FileText
+}
+
+export function RichTextEditor({
+  value,
+  onChange,
+  placeholder,
+  className,
+  attachments = [],
+  onAttachmentsChange,
+}: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const [isFocused, setIsFocused] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
 
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== value) {
@@ -73,24 +112,82 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Rich
     }
   }
 
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !onAttachmentsChange) return
+
+    setIsUploading(true)
+    const newAttachments: Attachment[] = []
+
+    try {
+      for (const file of Array.from(files)) {
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`File "${file.name}" is too large. Maximum size is 10MB.`)
+          continue
+        }
+
+        const formData = new FormData()
+        formData.append("file", file)
+
+        const response = await fetch("/api/attachments/upload", {
+          method: "POST",
+          body: formData,
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.message || "Upload failed")
+        }
+
+        const result = await response.json()
+        newAttachments.push({
+          id: result.id,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          url: result.url,
+        })
+      }
+
+      if (newAttachments.length > 0) {
+        onAttachmentsChange([...attachments, ...newAttachments])
+      }
+    } catch (error: any) {
+      console.error("Upload error:", error)
+      alert(error.message || "Failed to upload file")
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      if (imageInputRef.current) imageInputRef.current.value = ""
+    }
+  }
+
+  const removeAttachment = (id: string) => {
+    if (onAttachmentsChange) {
+      onAttachmentsChange(attachments.filter((a) => a.id !== id))
+    }
+  }
+
   const ToolbarButton = ({
     icon: Icon,
     onClick,
     title,
+    disabled,
   }: {
     icon: any
     onClick: () => void
     title: string
+    disabled?: boolean
   }) => (
     <Button
       type="button"
       variant="ghost"
       size="sm"
       onMouseDown={(e) => {
-        e.preventDefault() // Prevent button from taking focus
+        e.preventDefault()
         onClick()
       }}
       title={title}
+      disabled={disabled}
       className="h-8 w-8 p-0 hover:bg-accent"
     >
       <Icon className="h-4 w-4" />
@@ -105,6 +202,24 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Rich
         className
       )}
     >
+      {/* Hidden file inputs */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+        multiple
+        onChange={(e) => handleFileUpload(e.target.files)}
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        className="hidden"
+        accept="image/*"
+        multiple
+        onChange={(e) => handleFileUpload(e.target.files)}
+      />
+
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-1 p-2 border-b bg-muted/30">
         <ToolbarButton icon={Undo} onClick={() => execCommand("undo")} title="Undo" />
@@ -138,6 +253,25 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Rich
         <ToolbarButton icon={Code} onClick={() => execCommand("formatBlock", "<pre>")} title="Code Block" />
 
         <Separator orientation="vertical" className="h-6 mx-1" />
+
+        {/* Attachment Buttons */}
+        {onAttachmentsChange && (
+          <>
+            <ToolbarButton
+              icon={isUploading ? Loader2 : Image}
+              onClick={() => imageInputRef.current?.click()}
+              title="Attach Image"
+              disabled={isUploading}
+            />
+            <ToolbarButton
+              icon={isUploading ? Loader2 : Paperclip}
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach Document"
+              disabled={isUploading}
+            />
+            <Separator orientation="vertical" className="h-6 mx-1" />
+          </>
+        )}
 
         {/* Variable Buttons */}
         <Button
@@ -204,6 +338,43 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Rich
         }}
         data-placeholder={placeholder}
       />
+
+      {/* Attachments Preview */}
+      {attachments.length > 0 && (
+        <div className="border-t bg-muted/20 p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Paperclip className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium text-muted-foreground">
+              Attachments ({attachments.length})
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {attachments.map((attachment) => {
+              const FileIcon = getFileIcon(attachment.type)
+              return (
+                <Badge
+                  key={attachment.id}
+                  variant="secondary"
+                  className="flex items-center gap-2 py-1.5 px-3 text-sm"
+                >
+                  <FileIcon className="h-4 w-4" />
+                  <span className="max-w-[150px] truncate">{attachment.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({formatFileSize(attachment.size)})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(attachment.id)}
+                    className="ml-1 hover:text-destructive transition-colors"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         [contenteditable] ul {

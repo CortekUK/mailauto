@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import { sheetDBService } from "@/lib/sheetdb/client"
+import { sendCampaignEmails } from "@/lib/campaign-sender"
 
 // Use admin client to bypass RLS
 const supabaseAdmin = createClient(
@@ -158,38 +159,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     // Trigger immediate send for campaigns without future scheduling
-    // Build base URL - handle Vercel production environment
-    let baseUrl: string
-    if (process.env.VERCEL_URL) {
-      // Vercel provides VERCEL_URL without protocol
-      baseUrl = `https://${process.env.VERCEL_URL}`
-    } else if (process.env.NEXT_PUBLIC_VERCEL_URL) {
-      baseUrl = `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-    } else {
-      const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http'
-      const host = request.headers.get('host') || 'localhost:3000'
-      baseUrl = `${protocol}://${host}`
-    }
+    console.log(`Sending campaign ${id} immediately...`)
 
-    console.log(`Triggering immediate send for campaign ${id} at ${baseUrl}/api/campaigns/${id}/send`)
+    // Call send function directly instead of HTTP request
+    const sendResult = await sendCampaignEmails(id)
 
-    // Trigger send endpoint and wait for it to start (with timeout)
-    try {
-      const sendResponse = await fetch(`${baseUrl}/api/campaigns/${id}/send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+    if (sendResult.success) {
+      console.log(`Campaign ${id} sent successfully:`, sendResult.stats)
+      return NextResponse.json({
+        ...data,
+        status: 'sent',
+        sendResult: sendResult.stats
       })
-      const sendResult = await sendResponse.json()
-      console.log(`Send trigger response: ${sendResponse.status}`, sendResult)
-    } catch (err) {
-      console.error('Failed to trigger campaign send:', err)
-      // Don't fail the queue operation if send trigger fails
-      // The campaign is already queued and can be sent manually or via cron
+    } else {
+      console.error(`Campaign ${id} send failed:`, sendResult.error)
+      return NextResponse.json({
+        ...data,
+        sendError: sendResult.error
+      })
     }
-
-    return NextResponse.json(data)
   } catch (error: any) {
     return NextResponse.json({ message: error.message }, { status: 500 })
   }

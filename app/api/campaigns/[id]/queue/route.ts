@@ -148,13 +148,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (error) throw error
 
     // Check if campaign is scheduled for future
-    const isScheduled = campaign.scheduled_at && new Date(campaign.scheduled_at) > new Date()
+    const scheduledTime = campaign.scheduled_at ? new Date(campaign.scheduled_at) : null
+    const now = new Date()
+    const isScheduled = scheduledTime && scheduledTime > now
+
+    console.log(`📅 Schedule check for campaign ${id}:`)
+    console.log(`   - scheduled_at raw: ${campaign.scheduled_at}`)
+    console.log(`   - scheduled_at parsed: ${scheduledTime?.toISOString()}`)
+    console.log(`   - current time: ${now.toISOString()}`)
+    console.log(`   - is scheduled for future: ${isScheduled}`)
 
     if (isScheduled) {
-      console.log(`Campaign ${id} scheduled for ${campaign.scheduled_at}. Will be sent by cron job.`)
+      console.log(`⏰ Campaign ${id} scheduled for ${campaign.scheduled_at}. Will be sent by cron job.`)
       return NextResponse.json({
         ...data,
-        message: `Campaign scheduled for ${new Date(campaign.scheduled_at).toLocaleString()}`
+        message: `Campaign scheduled for ${scheduledTime!.toLocaleString()}`
       })
     }
 

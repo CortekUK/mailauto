@@ -297,6 +297,9 @@ export function LaunchConsole() {
     setShowConfirmModal(false)
     setIsQueueing(true)
     try {
+      // IMPORTANT: Save draft first to ensure scheduled_at is saved to database
+      await handleSaveDraft(true)
+
       const result = await queueCampaign(draftId)
 
       const isScheduled = scheduleType === "schedule" && scheduledAt && new Date(scheduledAt) > new Date()

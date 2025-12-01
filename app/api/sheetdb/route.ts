@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sheetDBService } from '@/lib/sheetdb/client';
+import { createClient } from '@supabase/supabase-js';
+
+// Supabase admin client for updating audiences
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
 
 // Helper function to trigger sync to Supabase
 async function triggerSync(request: NextRequest) {
@@ -123,6 +136,39 @@ export async function DELETE(request: NextRequest) {
     }
 
     const result = await sheetDBService.delete(columnName, columnValue, { sheet });
+
+    // If deleting by email, also remove from all audiences
+    if (columnName === 'Email 1' && columnValue) {
+      const deletedEmail = columnValue.toLowerCase();
+      console.log(`🗑️ Removing ${deletedEmail} from all audiences...`);
+
+      // Get all audiences that contain this email
+      const { data: audiences, error: fetchError } = await supabaseAdmin
+        .from('audiences')
+        .select('id, contact_emails, contact_count');
+
+      if (!fetchError && audiences) {
+        for (const audience of audiences) {
+          const emails = audience.contact_emails || [];
+          const updatedEmails = emails.filter(
+            (email: string) => email.toLowerCase() !== deletedEmail
+          );
+
+          // Only update if email was found in this audience
+          if (updatedEmails.length !== emails.length) {
+            await supabaseAdmin
+              .from('audiences')
+              .update({
+                contact_emails: updatedEmails,
+                contact_count: updatedEmails.length
+              })
+              .eq('id', audience.id);
+
+            console.log(`✅ Removed ${deletedEmail} from audience ${audience.id}`);
+          }
+        }
+      }
+    }
 
     // Auto-sync to Supabase
     triggerSync(request);

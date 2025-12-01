@@ -68,6 +68,7 @@ export function RichTextEditor({
   const editorRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const inlineImageInputRef = useRef<HTMLInputElement>(null)
   const [isFocused, setIsFocused] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
 
@@ -109,6 +110,97 @@ export function RichTextEditor({
       selection.removeAllRanges()
       selection.addRange(range)
       handleInput()
+    }
+  }
+
+  // Insert inline image into the editor content
+  const insertInlineImage = (url: string, alt: string = "image") => {
+    editorRef.current?.focus()
+    const img = `<img src="${url}" alt="${alt}" style="max-width: 100%; height: auto;" />`
+    document.execCommand("insertHTML", false, img)
+    handleInput()
+  }
+
+  // Handle inline image upload (embeds in body, not as attachment)
+  const handleInlineImageUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+
+    setIsUploading(true)
+
+    try {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) {
+          alert(`File "${file.name}" is not an image.`)
+          continue
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`File "${file.name}" is too large. Maximum size is 10MB.`)
+          continue
+        }
+
+        const formData = new FormData()
+        formData.append("file", file)
+
+        const response = await fetch("/api/attachments/upload", {
+          method: "POST",
+          body: formData,
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.message || "Upload failed")
+        }
+
+        const result = await response.json()
+        // Insert the image inline in the editor
+        insertInlineImage(result.url, file.name)
+      }
+    } catch (error: any) {
+      console.error("Inline image upload error:", error)
+      alert(error.message || "Failed to upload image")
+    } finally {
+      setIsUploading(false)
+      if (inlineImageInputRef.current) inlineImageInputRef.current.value = ""
+    }
+  }
+
+  // Handle paste event to embed images inline
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) {
+          setIsUploading(true)
+          try {
+            const formData = new FormData()
+            formData.append("file", file)
+
+            const response = await fetch("/api/attachments/upload", {
+              method: "POST",
+              body: formData,
+            })
+
+            if (!response.ok) {
+              const error = await response.json()
+              throw new Error(error.message || "Upload failed")
+            }
+
+            const result = await response.json()
+            insertInlineImage(result.url, "pasted-image")
+          } catch (error: any) {
+            console.error("Paste image upload error:", error)
+            alert(error.message || "Failed to upload pasted image")
+          } finally {
+            setIsUploading(false)
+          }
+        }
+        break // Only handle first image
+      }
     }
   }
 
@@ -219,6 +311,15 @@ export function RichTextEditor({
         multiple
         onChange={(e) => handleFileUpload(e.target.files)}
       />
+      {/* Inline image input - images go into body, not attachments */}
+      <input
+        ref={inlineImageInputRef}
+        type="file"
+        className="hidden"
+        accept="image/*"
+        multiple
+        onChange={(e) => handleInlineImageUpload(e.target.files)}
+      />
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-1 p-2 border-b bg-muted/30">
@@ -254,15 +355,17 @@ export function RichTextEditor({
 
         <Separator orientation="vertical" className="h-6 mx-1" />
 
-        {/* Attachment Buttons */}
+        {/* Image Button - Inserts inline in body */}
+        <ToolbarButton
+          icon={isUploading ? Loader2 : Image}
+          onClick={() => inlineImageInputRef.current?.click()}
+          title="Insert Image (inline in body)"
+          disabled={isUploading}
+        />
+
+        {/* Attachment Button - For documents only */}
         {onAttachmentsChange && (
           <>
-            <ToolbarButton
-              icon={isUploading ? Loader2 : Image}
-              onClick={() => imageInputRef.current?.click()}
-              title="Attach Image"
-              disabled={isUploading}
-            />
             <ToolbarButton
               icon={isUploading ? Loader2 : Paperclip}
               onClick={() => fileInputRef.current?.click()}
@@ -329,6 +432,7 @@ export function RichTextEditor({
         ref={editorRef}
         contentEditable
         onInput={handleInput}
+        onPaste={handlePaste}
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
         className="min-h-[300px] p-4 max-w-none focus:outline-none"
@@ -423,6 +527,12 @@ export function RichTextEditor({
         }
         [contenteditable] u {
           text-decoration: underline;
+        }
+        [contenteditable] img {
+          max-width: 100%;
+          height: auto;
+          border-radius: 0.375rem;
+          margin: 0.5rem 0;
         }
       `}</style>
 

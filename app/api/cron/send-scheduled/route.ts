@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { sendCampaignEmails } from "@/lib/campaign-sender"
 
 // Use admin client to bypass RLS
 const supabaseAdmin = createClient(
@@ -45,34 +46,28 @@ export async function GET(request: Request) {
       console.log(`   - "${c.subject}" scheduled for ${c.scheduled_at}`)
     })
 
-    // Trigger send for each campaign
-    const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http'
-    const host = request.headers.get('host') || 'localhost:3000'
-    const baseUrl = `${protocol}://${host}`
-
     const results = []
 
     for (const campaign of campaigns) {
       try {
         console.log(`Sending campaign: ${campaign.subject} (ID: ${campaign.id})`)
 
-        const response = await fetch(`${baseUrl}/api/campaigns/${campaign.id}/send`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        })
-
-        const data = await response.json()
+        // Call send function directly instead of HTTP request
+        const sendResult = await sendCampaignEmails(campaign.id)
 
         results.push({
           campaignId: campaign.id,
           subject: campaign.subject,
-          status: response.ok ? 'sent' : 'failed',
-          data
+          status: sendResult.success ? 'sent' : 'failed',
+          stats: sendResult.stats,
+          error: sendResult.error
         })
 
-        console.log(`✅ Triggered send for campaign ${campaign.id}`)
+        if (sendResult.success) {
+          console.log(`✅ Sent campaign ${campaign.id}:`, sendResult.stats)
+        } else {
+          console.error(`❌ Failed campaign ${campaign.id}:`, sendResult.error)
+        }
       } catch (error: any) {
         console.error(`Failed to send campaign ${campaign.id}:`, error)
         results.push({

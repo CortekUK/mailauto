@@ -35,12 +35,13 @@ export async function middleware(request: NextRequest) {
 
   const isAuthPage = request.nextUrl.pathname.startsWith("/auth")
   const isSyncEndpoint = request.nextUrl.pathname.startsWith("/api/sync")
+  const isCronEndpoint = request.nextUrl.pathname.startsWith("/api/cron")
   const isCampaignSendEndpoint = request.nextUrl.pathname.includes("/api/campaigns/") &&
                                   (request.nextUrl.pathname.endsWith("/send") ||
                                    request.nextUrl.pathname.endsWith("/queue"))
 
   // If user is not logged in and trying to access protected pages, redirect to login
-  if (!user && !isAuthPage && !isSyncEndpoint && !isCampaignSendEndpoint) {
+  if (!user && !isAuthPage && !isSyncEndpoint && !isCronEndpoint && !isCampaignSendEndpoint) {
     const url = request.nextUrl.clone()
     url.pathname = "/auth/login"
     return NextResponse.redirect(url)

@@ -55,8 +55,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('📝 Webhook payload:', JSON.stringify(body, null, 2));
 
-    // Handle both direct form data and nested Wix webhook format
-    const formData: WixFormData = body.data || body.formData || body;
+    // Handle various Wix webhook formats
+    // Wix sends: { submission: {...}, submissions: { field_name: value, ... } }
+    const formData: WixFormData = body.submissions || body.data || body.formData || body;
 
     // Extract fields with multiple possible field name formats
     // Handle "Full Name" field - split into first/last if provided
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
       lastName = nameParts.slice(1).join(' ') || '';
     }
     const email = extractField(formData, 'email', 'Email', 'Email 1', 'email-address', 'emailAddress');
-    const phone = extractField(formData, 'phone', 'Phone', 'Phone 1', 'phone-number', 'phoneNumber');
+    const phone = extractField(formData, 'phone', 'Phone', 'Phone 1', 'phone-number', 'phoneNumber', 'phone_number_1', 'Phone Number');
     const company = extractField(formData, 'company', 'Company', 'company-name', 'companyName');
     const city = extractField(formData, 'city', 'City', 'Address 1 - City');
     const state = extractField(formData, 'state', 'State', 'Address 1 - State/Region', 'region', 'Region');

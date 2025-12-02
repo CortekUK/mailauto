@@ -208,8 +208,8 @@ export function SubscriberManagerV2() {
         toast.success('Subscriber added successfully!');
         reset();
         setIsAddDialogOpen(false);
-        // Real-time will handle the update, but refresh just in case
-        if (!isRealtime) await fetchContacts(false);
+        // Always refresh to ensure UI is in sync
+        await fetchContacts(false);
       } else {
         toast.error(result.error || 'Failed to add subscriber');
       }

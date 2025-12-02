@@ -218,10 +218,57 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // Get the old email (what we're searching by) and new email (from data)
+    const oldEmail = columnName === 'Email 1' ? columnValue.toLowerCase().trim() : null;
+    const newEmail = (data['Email 1'] || '').toLowerCase().trim();
+
+    // If email is being changed, check if new email already exists
+    if (oldEmail && newEmail && oldEmail !== newEmail) {
+      const { data: existingWithNewEmail } = await supabaseAdmin
+        .from('contacts')
+        .select('id')
+        .eq('email', newEmail)
+        .single();
+
+      if (existingWithNewEmail) {
+        return NextResponse.json({
+          success: false,
+          error: 'Cannot change email: the new email is already in use',
+          duplicate: true
+        }, { status: 409 });
+      }
+    }
+
+    // Update in SheetDB
     const result = await sheetDBService.update(columnName, columnValue, data, { sheet });
 
-    // Immediately sync to Supabase for real-time updates
-    await syncContactToSupabase(data);
+    // Update in Supabase - use OLD email to find the record, update with new data
+    if (oldEmail) {
+      const firstName = data['First Name'] || '';
+      const lastName = data['Last Name'] || '';
+
+      await supabaseAdmin
+        .from('contacts')
+        .update({
+          email: newEmail,
+          name: `${firstName} ${lastName}`.trim() || null,
+          first_name: firstName?.trim() || null,
+          last_name: lastName?.trim() || null,
+          phone: data['Phone 1']?.trim() || null,
+          company: data['Company']?.trim() || null,
+          city: data['Address 1 - City']?.trim() || null,
+          state: data['Address 1 - State/Region']?.trim() || null,
+          country: data['Address 1 - Country']?.trim() || null,
+          labels: data['Labels']?.trim() || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('email', oldEmail);
+
+      console.log(`✅ Updated contact in Supabase: ${oldEmail} -> ${newEmail}`);
+    }
+
+    // Update audience count
+    await updateAudienceCount();
 
     return NextResponse.json({ success: true, data: result }, { status: 200 });
   } catch (error: any) {

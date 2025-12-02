@@ -463,31 +463,60 @@ export function SubscriberManagerV2() {
                           <TableCell className="hidden lg:table-cell">
                             {(() => {
                               const source = (contact.source || 'manual').toLowerCase()
-                              if (source === 'wix-form' || source === 'wix') {
+                              // Wix Form
+                              if (source === 'wix-form' || source === 'wix form') {
                                 return (
                                   <Badge className="text-xs bg-gradient-to-r from-[#5C6BC0] to-[#7C4DFF] text-white border-0">
                                     Wix Form
                                   </Badge>
                                 )
-                              } else if (source === 'sheetdb' || source === 'sheet-db') {
+                              }
+                              // Wix Stores
+                              if (source === 'wix stores' || source === 'wix-stores' || source === 'wix store') {
+                                return (
+                                  <Badge className="text-xs bg-gradient-to-r from-[#FF6F61] to-[#FF8A65] text-white border-0">
+                                    Wix Stores
+                                  </Badge>
+                                )
+                              }
+                              // Form Submission
+                              if (source === 'form submission' || source === 'form-submission' || source === 'form') {
+                                return (
+                                  <Badge className="text-xs bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-0">
+                                    Form Submission
+                                  </Badge>
+                                )
+                              }
+                              // Sheet DB
+                              if (source === 'sheetdb' || source === 'sheet-db' || source === 'sheet db') {
                                 return (
                                   <Badge className="text-xs bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">
                                     Sheet DB
                                   </Badge>
                                 )
-                              } else if (source === 'manual') {
+                              }
+                              // Manual / Manual Creation
+                              if (source === 'manual' || source === 'manual creation' || source === 'manual-creation') {
                                 return (
                                   <Badge className="text-xs bg-gradient-to-r from-slate-500 to-slate-600 text-white border-0">
                                     Manual
                                   </Badge>
                                 )
-                              } else {
+                              }
+                              // Import
+                              if (source === 'import' || source === 'csv' || source === 'csv import') {
                                 return (
-                                  <Badge variant="secondary" className="text-xs">
-                                    {source.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                  <Badge className="text-xs bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
+                                    Import
                                   </Badge>
                                 )
                               }
+                              // Default - format nicely
+                              return (
+                                <Badge className="text-xs bg-gradient-to-r from-gray-500 to-gray-600 text-white border-0">
+                                  {source.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                </Badge>
+                              )
                             })()}
                           </TableCell>
                           <TableCell className="text-right">

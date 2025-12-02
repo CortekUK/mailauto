@@ -11,8 +11,7 @@ export const ValidationMessages = {
     required: "Audience is required",
   },
   htmlBody: {
-    required: "HTML body is required",
-    minLength: "HTML body must be at least 50 characters",
+    required: "Email content is required",
   },
   schedule: {
     future: "Schedule must be in the future",
@@ -65,11 +64,9 @@ export function validateCampaign(data: {
     errors.audience = ValidationMessages.audience.required
   }
 
-  // HTML body validation
+  // HTML body validation - just check it's not empty
   if (!data.htmlContent.trim()) {
     errors.htmlBody = ValidationMessages.htmlBody.required
-  } else if (data.htmlContent.trim().length < 50) {
-    errors.htmlBody = ValidationMessages.htmlBody.minLength
   }
 
   // Schedule validation

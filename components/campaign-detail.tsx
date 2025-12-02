@@ -175,14 +175,11 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
   }
 
   function exportRecipientsCSV() {
-    const headers = ["Email", "First Name", "Status", "Opens", "Clicks", "Last Event"]
+    const headers = ["Email", "Name", "Delivery Status"]
     const rows = filteredRecipients.map((r) => [
       r.contacts?.email || r.email,
       r.contacts?.name || "",
       r.delivery_status,
-      r.opens_count,
-      r.clicks_count,
-      r.last_event_at ? new Date(r.last_event_at).toISOString() : "",
     ])
     const csv = [headers, ...rows].map((row) => row.join(",")).join("\n")
     const blob = new Blob([csv], { type: "text/csv" })
@@ -317,7 +314,6 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="recipients">Recipients</TabsTrigger>
             <TabsTrigger value="content">Content</TabsTrigger>
-            <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -454,15 +450,12 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                   <TableRow>
                     <TableHead>Email</TableHead>
                     <TableHead>Delivery Status</TableHead>
-                    <TableHead>Opens</TableHead>
-                    <TableHead>Clicks</TableHead>
-                    <TableHead>Last Event</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredRecipients.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      <TableCell colSpan={2} className="text-center text-muted-foreground">
                         No recipients found
                       </TableCell>
                     </TableRow>
@@ -491,13 +484,6 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                             {recipient.delivery_status}
                           </Badge>
                           {recipient.error && <div className="mt-1 text-xs text-red-600">{recipient.error}</div>}
-                        </TableCell>
-                        <TableCell>{recipient.opens_count}</TableCell>
-                        <TableCell>{recipient.clicks_count}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {recipient.last_event_at
-                            ? formatDistanceToNow(new Date(recipient.last_event_at), { addSuffix: true })
-                            : "—"}
                         </TableCell>
                       </TableRow>
                     ))
@@ -534,50 +520,6 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
             </div>
           </TabsContent>
 
-          {/* Activity Tab */}
-          <TabsContent value="activity">
-            <Card>
-              <CardHeader>
-                <CardTitle>Event Feed ({events.length} events)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {events.length === 0 ? (
-                    <p className="text-center text-muted-foreground">No events yet</p>
-                  ) : (
-                    events.map((event) => (
-                      <div key={event.id} className="flex items-start gap-4 border-b pb-4 last:border-0">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                          {event.event_type === "sent" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-                          {event.event_type === "delivered" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-                          {event.event_type === "opened" && <Mail className="h-4 w-4 text-blue-600" />}
-                          {event.event_type === "clicked" && <MousePointerClick className="h-4 w-4 text-purple-600" />}
-                          {event.event_type === "bounced" && <XCircle className="h-4 w-4 text-red-600" />}
-                          {event.event_type === "failed" && <AlertTriangle className="h-4 w-4 text-orange-600" />}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <div className="font-medium capitalize">{event.event_type}</div>
-                              <div className="text-sm text-muted-foreground">{event.email}</div>
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
-                            </div>
-                          </div>
-                          {event.metadata && (
-                            <pre className="mt-2 rounded bg-muted p-2 text-xs">
-                              {JSON.stringify(event.metadata, null, 2)}
-                            </pre>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
       </div>
 

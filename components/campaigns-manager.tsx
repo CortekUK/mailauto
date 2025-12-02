@@ -26,15 +26,16 @@ import {
   Filter,
   Edit,
   Trash2,
+  Ban,
 } from "lucide-react"
-import { listCampaigns, duplicateCampaign, deleteCampaign } from "@/lib/api"
+import { listCampaigns, duplicateCampaign, deleteCampaign, cancelCampaign } from "@/lib/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 type Campaign = {
   id: string
   subject: string
   from_email: string
-  status: "draft" | "queued" | "sending" | "sent" | "failed"
+  status: "draft" | "queued" | "sending" | "sent" | "failed" | "canceled"
   audience_id: string
   scheduled_at?: string
   sent_count?: number
@@ -132,6 +133,27 @@ export function CampaignsManager() {
     }
   }
 
+  async function handleCancel(campaignId: string, subject: string) {
+    if (!confirm(`Are you sure you want to cancel "${subject}"? This will stop the campaign from being sent.`)) {
+      return
+    }
+
+    try {
+      await cancelCampaign(campaignId)
+      toast({
+        title: "Campaign cancelled",
+        description: `"${subject}" has been cancelled successfully.`,
+      })
+      loadCampaigns()
+    } catch (error: any) {
+      toast({
+        title: "Error cancelling campaign",
+        description: error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
   function handleEdit(campaignId: string) {
     router.push(`/?campaign=${campaignId}`)
   }
@@ -170,6 +192,12 @@ export function CampaignsManager() {
         variant: "destructive",
         icon: XCircle,
         className: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400",
+      },
+      canceled: {
+        label: "Cancelled",
+        variant: "secondary",
+        icon: Ban,
+        className: "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400",
       },
     }
 
@@ -307,6 +335,7 @@ export function CampaignsManager() {
                   <DropdownMenuItem onClick={() => setStatusFilter("queued")}>Queued</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setStatusFilter("draft")}>Draft</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setStatusFilter("failed")}>Failed</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setStatusFilter("canceled")}>Cancelled</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -451,6 +480,18 @@ export function CampaignsManager() {
                             <Copy className="mr-2 h-4 w-4" />
                             Duplicate
                           </DropdownMenuItem>
+                          {(campaign.status === "draft" || campaign.status === "queued") && (
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleCancel(campaign.id, campaign.subject)
+                              }}
+                              className="text-orange-600 focus:text-orange-600"
+                            >
+                              <Ban className="mr-2 h-4 w-4" />
+                              Cancel Campaign
+                            </DropdownMenuItem>
+                          )}
                           {(campaign.status === "draft" || campaign.status === "queued" || campaign.status === "failed") && (
                             <DropdownMenuItem
                               onClick={(e) => {

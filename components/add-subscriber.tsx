@@ -13,7 +13,7 @@ import { Loader2 } from 'lucide-react';
 
 // Validation schema - updated for new SheetDB columns
 const subscriberSchema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
+  firstName: z.string().optional(),
   lastName: z.string().optional(),
   email: z.string().email('Please enter a valid email address'),
   phone: z.string().optional(),
@@ -92,16 +92,13 @@ export function AddSubscriber() {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="firstName">First Name *</Label>
+              <Label htmlFor="firstName">First Name</Label>
               <Input
                 id="firstName"
                 placeholder="John"
                 {...register('firstName')}
                 disabled={isSubmitting}
               />
-              {errors.firstName && (
-                <p className="text-sm text-red-500">{errors.firstName.message}</p>
-              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="lastName">Last Name</Label>

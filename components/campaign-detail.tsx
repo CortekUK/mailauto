@@ -296,7 +296,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               <Copy className="mr-2 h-4 w-4" />
               Duplicate
             </Button>
-            {campaign.status === "queued" && (
+            {(campaign.status === "queued" || campaign.status === "draft") && (
               <Button variant="outline" size="sm" onClick={() => setShowCancelDialog(true)} disabled={actionLoading}>
                 <Ban className="mr-2 h-4 w-4" />
                 Cancel

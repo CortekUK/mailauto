@@ -9,7 +9,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
-import { Users, Copy, Edit, Trash2, Plus, Loader2, Target, TrendingUp, Search } from "lucide-react"
+import { Users, Copy, Edit, Trash2, Plus, Loader2, Target, TrendingUp, Search, Check, X } from "lucide-react"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { listContacts } from "@/lib/api"
 import { formatDistanceToNow } from "date-fns"
 import { PageHeader } from "@/components/page-header"
@@ -40,6 +41,7 @@ export function AudiencesManagerSimple() {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([])
   const [searchQuery, setSearchQuery] = useState("")
+  const [viewFilter, setViewFilter] = useState<"all" | "selected" | "unselected">("all")
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingContacts, setIsLoadingContacts] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -57,23 +59,38 @@ export function AudiencesManagerSimple() {
   }, [])
 
   useEffect(() => {
-    // Filter contacts based on search query
-    if (searchQuery.trim() === "") {
-      setFilteredContacts(contacts)
-    } else {
+    // Filter contacts based on search query and view filter
+    let filtered = contacts
+
+    // Apply search filter
+    if (searchQuery.trim() !== "") {
       const query = searchQuery.toLowerCase()
-      setFilteredContacts(
-        contacts.filter(
-          (c) =>
-            c.email?.toLowerCase().includes(query) ||
-            c.name?.toLowerCase().includes(query) ||
-            c.first_name?.toLowerCase().includes(query) ||
-            c.last_name?.toLowerCase().includes(query) ||
-            c.company?.toLowerCase().includes(query)
-        )
+      filtered = filtered.filter(
+        (c) =>
+          c.email?.toLowerCase().includes(query) ||
+          c.name?.toLowerCase().includes(query) ||
+          c.first_name?.toLowerCase().includes(query) ||
+          c.last_name?.toLowerCase().includes(query) ||
+          c.company?.toLowerCase().includes(query)
       )
     }
-  }, [searchQuery, contacts])
+
+    // Apply view filter (selected/unselected/all)
+    if (viewFilter === "selected") {
+      filtered = filtered.filter((c) => selectedContactIds.has(c.id))
+    } else if (viewFilter === "unselected") {
+      filtered = filtered.filter((c) => !selectedContactIds.has(c.id))
+    }
+
+    // Sort: selected contacts first
+    filtered = [...filtered].sort((a, b) => {
+      const aSelected = selectedContactIds.has(a.id) ? 0 : 1
+      const bSelected = selectedContactIds.has(b.id) ? 0 : 1
+      return aSelected - bSelected
+    })
+
+    setFilteredContacts(filtered)
+  }, [searchQuery, contacts, viewFilter, selectedContactIds])
 
   async function loadAudiences() {
     setIsLoading(true)
@@ -116,6 +133,7 @@ export function AudiencesManagerSimple() {
     setDescription("")
     setSelectedContactIds(new Set())
     setSearchQuery("")
+    setViewFilter("all")
     setIsModalOpen(true)
   }
 
@@ -125,6 +143,7 @@ export function AudiencesManagerSimple() {
     setDescription(audience.description || "")
     setSelectedContactIds(new Set(audience.contact_ids || []))
     setSearchQuery("")
+    setViewFilter("selected") // Default to showing selected when editing
     setIsModalOpen(true)
   }
 
@@ -498,7 +517,7 @@ export function AudiencesManagerSimple() {
                   <div>
                     <Label className="text-base font-semibold">Select Subscribers</Label>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {selectedContactIds.size} of {contacts.length} selected
+                      <span className="font-semibold text-primary">{selectedContactIds.size}</span> of {contacts.length} selected
                     </p>
                   </div>
                   <Button
@@ -508,14 +527,31 @@ export function AudiencesManagerSimple() {
                     onClick={toggleSelectAll}
                     className="h-9"
                   >
-                    {selectedContactIds.size === filteredContacts.length ? "Deselect All" : "Select All"}
+                    {selectedContactIds.size === filteredContacts.length && filteredContacts.length > 0 ? "Deselect All" : "Select All"}
                   </Button>
                 </div>
+
+                {/* Filter Tabs */}
+                <Tabs value={viewFilter} onValueChange={(v) => setViewFilter(v as "all" | "selected" | "unselected")} className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="all" className="text-xs sm:text-sm">
+                      All ({contacts.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="selected" className="text-xs sm:text-sm">
+                      <Check className="h-3 w-3 mr-1 text-green-600" />
+                      Selected ({selectedContactIds.size})
+                    </TabsTrigger>
+                    <TabsTrigger value="unselected" className="text-xs sm:text-sm">
+                      <X className="h-3 w-3 mr-1 text-muted-foreground" />
+                      Unselected ({contacts.length - selectedContactIds.size})
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
 
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search by name or email..."
+                    placeholder="Search by name, email, or company..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10 h-11"
@@ -529,35 +565,51 @@ export function AudiencesManagerSimple() {
                     </div>
                   ) : filteredContacts.length === 0 ? (
                     <div className="text-center py-10 text-muted-foreground">
-                      <p>No subscribers found</p>
+                      {viewFilter === "selected" ? (
+                        <p>No subscribers selected yet</p>
+                      ) : viewFilter === "unselected" ? (
+                        <p>All subscribers are selected</p>
+                      ) : (
+                        <p>No subscribers found</p>
+                      )}
                     </div>
                   ) : (
                     <div className="divide-y">
                       {filteredContacts.map((contact) => {
+                        const isSelected = selectedContactIds.has(contact.id)
                         const displayName = contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.email
                         return (
                           <div
                             key={contact.id}
-                            className="flex items-center gap-3 p-4 hover:bg-accent/50 transition-colors cursor-pointer"
+                            className={`flex items-center gap-3 p-4 hover:bg-accent/50 transition-colors cursor-pointer ${
+                              isSelected ? "bg-green-50 dark:bg-green-950/20 border-l-4 border-l-green-500" : ""
+                            }`}
                             onClick={() => toggleContact(contact.id)}
                           >
                             <Checkbox
-                              checked={selectedContactIds.has(contact.id)}
+                              checked={isSelected}
                               onCheckedChange={() => toggleContact(contact.id)}
                               className="h-5 w-5"
                             />
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium truncate">{displayName}</p>
+                              <p className={`font-medium truncate ${isSelected ? "text-green-700 dark:text-green-400" : ""}`}>
+                                {displayName}
+                              </p>
                               <p className="text-sm text-muted-foreground truncate">{contact.email}</p>
                               {contact.company && (
                                 <p className="text-xs text-muted-foreground truncate">{contact.company}</p>
                               )}
                             </div>
-                            {(contact.status === "subscribed" || contact.status === "active") && (
-                              <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full flex-shrink-0">
+                            {isSelected ? (
+                              <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 px-2 py-1 rounded-full flex items-center gap-1 flex-shrink-0">
+                                <Check className="h-3 w-3" />
+                                In Audience
+                              </span>
+                            ) : (contact.status === "subscribed" || contact.status === "active") ? (
+                              <span className="text-xs bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 px-2 py-1 rounded-full flex-shrink-0">
                                 Active
                               </span>
-                            )}
+                            ) : null}
                           </div>
                         )
                       })}

@@ -466,7 +466,32 @@ export function CampaignsManager() {
                           </>
                         )}
                       </Button>
-                   
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuItem onClick={() => handleDuplicate(campaign.id, campaign.subject)}>
+                            <Copy className="mr-2 h-4 w-4" />
+                            Duplicate
+                          </DropdownMenuItem>
+                          {(campaign.status === "draft" || campaign.status === "queued") && (
+                            <DropdownMenuItem onClick={() => handleCancel(campaign.id, campaign.subject)}>
+                              <Ban className="mr-2 h-4 w-4" />
+                              Cancel
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(campaign.id, campaign.subject)}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 ))}

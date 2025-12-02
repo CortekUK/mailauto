@@ -58,45 +58,153 @@ export function AudiencesManagerSimple() {
     loadContacts()
   }, [])
 
+  // Helper function to check if a contact is selected (case-insensitive)
+  const isContactSelected = (contactId: string) => {
+    const normalizedId = contactId.toLowerCase().trim()
+    for (const selectedId of selectedContactIds) {
+      if (selectedId.toLowerCase().trim() === normalizedId) {
+        return true
+      }
+    }
+    return false
+  }
+
+  // Helper function to calculate match score for sorting (higher = better match)
+  const getMatchScore = (contact: Contact, query: string): number => {
+    if (!query) return 0
+    const q = query.toLowerCase()
+    const firstName = (contact.first_name || '').toLowerCase()
+    const lastName = (contact.last_name || '').toLowerCase()
+    const fullName = `${firstName} ${lastName}`.trim()
+    const email = (contact.email || '').toLowerCase()
+    const displayName = (contact.name || '').toLowerCase()
+
+    // Exact match gets highest score
+    if (firstName === q || lastName === q || email === q) return 100
+    // Starts with query gets high score
+    if (firstName.startsWith(q) || lastName.startsWith(q) || email.startsWith(q) || fullName.startsWith(q)) return 80
+    if (displayName.startsWith(q)) return 75
+    // Contains query gets medium score
+    if (firstName.includes(q) || lastName.includes(q)) return 60
+    if (email.includes(q)) return 50
+    if (fullName.includes(q) || displayName.includes(q)) return 40
+    if ((contact.company || '').toLowerCase().includes(q)) return 20
+    return 0
+  }
+
+  // Helper to check if contact matches search query
+  const contactMatchesSearch = (contact: Contact, query: string): boolean => {
+    if (!query) return true
+    const q = query.toLowerCase()
+    const fullName = [contact.first_name, contact.last_name].filter(Boolean).join(' ').toLowerCase()
+    const displayName = (contact.name || '').toLowerCase()
+    const email = (contact.email || '').toLowerCase()
+    const company = (contact.company || '').toLowerCase()
+    const firstName = (contact.first_name || '').toLowerCase()
+    const lastName = (contact.last_name || '').toLowerCase()
+
+    return (
+      email.includes(q) ||
+      displayName.includes(q) ||
+      fullName.includes(q) ||
+      firstName.includes(q) ||
+      lastName.includes(q) ||
+      company.includes(q)
+    )
+  }
+
+  // Calculate actual selected count (contacts that exist and are selected)
+  const actualSelectedCount = contacts.filter(c => isContactSelected(c.id)).length
+  const actualUnselectedCount = contacts.length - actualSelectedCount
+
+  // Track if search has ANY matches across all contacts (regardless of tab)
+  const trimmedSearchQuery = searchQuery.trim().toLowerCase()
+  const searchMatchesAll = trimmedSearchQuery === ""
+    ? contacts
+    : contacts.filter(c => contactMatchesSearch(c, trimmedSearchQuery))
+  const hasAnySearchMatch = searchMatchesAll.length > 0
+  const noSearchResults = trimmedSearchQuery !== "" && !hasAnySearchMatch
+
   useEffect(() => {
-    // Filter contacts based on search query and view filter
-    let filtered = contacts
-
-    // Apply search filter - robust search with null safety
     const trimmedQuery = searchQuery.trim().toLowerCase()
+
+    // Helper to check if contact is selected (inline to avoid stale closure)
+    const checkSelected = (contactId: string) => {
+      const normalizedId = contactId.toLowerCase().trim()
+      for (const selectedId of selectedContactIds) {
+        if (selectedId.toLowerCase().trim() === normalizedId) {
+          return true
+        }
+      }
+      return false
+    }
+
+    // Helper to check if contact matches search
+    const matchesSearch = (contact: Contact, query: string): boolean => {
+      if (!query) return true
+      const q = query.toLowerCase()
+      const fullName = [contact.first_name, contact.last_name].filter(Boolean).join(' ').toLowerCase()
+      const displayName = (contact.name || '').toLowerCase()
+      const email = (contact.email || '').toLowerCase()
+      const company = (contact.company || '').toLowerCase()
+      const firstName = (contact.first_name || '').toLowerCase()
+      const lastName = (contact.last_name || '').toLowerCase()
+
+      return (
+        email.includes(q) ||
+        displayName.includes(q) ||
+        fullName.includes(q) ||
+        firstName.includes(q) ||
+        lastName.includes(q) ||
+        company.includes(q)
+      )
+    }
+
+    // Helper to get match score for sorting
+    const getScore = (contact: Contact, query: string): number => {
+      if (!query) return 0
+      const q = query.toLowerCase()
+      const firstName = (contact.first_name || '').toLowerCase()
+      const lastName = (contact.last_name || '').toLowerCase()
+      const fullName = `${firstName} ${lastName}`.trim()
+      const email = (contact.email || '').toLowerCase()
+      const displayName = (contact.name || '').toLowerCase()
+
+      if (firstName === q || lastName === q || email === q) return 100
+      if (firstName.startsWith(q) || lastName.startsWith(q) || email.startsWith(q) || fullName.startsWith(q)) return 80
+      if (displayName.startsWith(q)) return 75
+      if (firstName.includes(q) || lastName.includes(q)) return 60
+      if (email.includes(q)) return 50
+      if (fullName.includes(q) || displayName.includes(q)) return 40
+      if ((contact.company || '').toLowerCase().includes(q)) return 20
+      return 0
+    }
+
+    // Step 1: First filter by search across ALL contacts
+    let searchFiltered = contacts
     if (trimmedQuery !== "") {
-      filtered = filtered.filter((c) => {
-        // Build full name from first_name and last_name for better matching
-        const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ').toLowerCase()
-        const displayName = (c.name || '').toLowerCase()
-        const email = (c.email || '').toLowerCase()
-        const company = (c.company || '').toLowerCase()
-        const firstName = (c.first_name || '').toLowerCase()
-        const lastName = (c.last_name || '').toLowerCase()
-
-        // Check if query matches any field
-        return (
-          email.includes(trimmedQuery) ||
-          displayName.includes(trimmedQuery) ||
-          fullName.includes(trimmedQuery) ||
-          firstName.includes(trimmedQuery) ||
-          lastName.includes(trimmedQuery) ||
-          company.includes(trimmedQuery)
-        )
-      })
+      searchFiltered = contacts.filter((c) => matchesSearch(c, trimmedQuery))
     }
 
-    // Apply view filter (selected/unselected/all)
+    // Step 2: Apply view filter (selected/unselected/all) on search results
+    let filtered = searchFiltered
     if (viewFilter === "selected") {
-      filtered = filtered.filter((c) => selectedContactIds.has(c.id))
+      filtered = searchFiltered.filter((c) => checkSelected(c.id))
     } else if (viewFilter === "unselected") {
-      filtered = filtered.filter((c) => !selectedContactIds.has(c.id))
+      filtered = searchFiltered.filter((c) => !checkSelected(c.id))
     }
 
-    // Sort: selected contacts first
+    // Step 3: Sort results - best matches first, then selected status
     filtered = [...filtered].sort((a, b) => {
-      const aSelected = selectedContactIds.has(a.id) ? 0 : 1
-      const bSelected = selectedContactIds.has(b.id) ? 0 : 1
+      // If searching, sort by match score first
+      if (trimmedQuery !== "") {
+        const aScore = getScore(a, trimmedQuery)
+        const bScore = getScore(b, trimmedQuery)
+        if (aScore !== bScore) return bScore - aScore // Higher score first
+      }
+      // Then by selected status
+      const aSelected = checkSelected(a.id) ? 0 : 1
+      const bSelected = checkSelected(b.id) ? 0 : 1
       return aSelected - bSelected
     })
 
@@ -125,8 +233,16 @@ export function AudiencesManagerSimple() {
     setIsLoadingContacts(true)
     try {
       const data = await listContacts()
-      setContacts(data)
-      setFilteredContacts(data)
+      // Deduplicate contacts by email to avoid React key issues
+      const seen = new Set<string>()
+      const uniqueContacts = data.filter((contact: Contact) => {
+        const email = contact.email?.toLowerCase()
+        if (!email || seen.has(email)) return false
+        seen.add(email)
+        return true
+      })
+      setContacts(uniqueContacts)
+      // Don't set filteredContacts here - let useEffect handle filtering
     } catch (error: any) {
       toast({
         title: "Error loading contacts",
@@ -168,7 +284,7 @@ export function AudiencesManagerSimple() {
       return
     }
 
-    if (selectedContactIds.size === 0) {
+    if (actualSelectedCount === 0) {
       toast({
         title: "No contacts selected",
         description: "Please select at least one contact",
@@ -179,10 +295,15 @@ export function AudiencesManagerSimple() {
 
     setIsSaving(true)
     try {
+      // Only include contact IDs that actually exist in the contacts list
+      const validContactIds = contacts
+        .filter(c => isContactSelected(c.id))
+        .map(c => c.id)
+
       const payload = {
         name: name.trim(),
         description: description.trim() || undefined,
-        contact_ids: Array.from(selectedContactIds),
+        contact_ids: validContactIds,
       }
 
       console.log("Saving audience with payload:", payload)
@@ -278,8 +399,16 @@ export function AudiencesManagerSimple() {
 
   function toggleContact(contactId: string) {
     const newSet = new Set(selectedContactIds)
-    if (newSet.has(contactId)) {
-      newSet.delete(contactId)
+    // Check if already selected (case-insensitive)
+    let existingId: string | null = null
+    for (const id of newSet) {
+      if (id.toLowerCase().trim() === contactId.toLowerCase().trim()) {
+        existingId = id
+        break
+      }
+    }
+    if (existingId) {
+      newSet.delete(existingId)
     } else {
       newSet.add(contactId)
     }
@@ -287,11 +416,33 @@ export function AudiencesManagerSimple() {
   }
 
   function toggleSelectAll() {
-    if (selectedContactIds.size === filteredContacts.length) {
-      setSelectedContactIds(new Set())
+    const newSet = new Set(selectedContactIds)
+
+    // Check if all filtered contacts are currently selected
+    const allFilteredSelected = filteredContacts.every(c => isContactSelected(c.id))
+
+    if (allFilteredSelected && filteredContacts.length > 0) {
+      // Deselect only the filtered contacts (keep others selected)
+      for (const contact of filteredContacts) {
+        // Find and remove the matching ID (case-insensitive)
+        for (const id of newSet) {
+          if (id.toLowerCase().trim() === contact.id.toLowerCase().trim()) {
+            newSet.delete(id)
+            break
+          }
+        }
+      }
     } else {
-      setSelectedContactIds(new Set(filteredContacts.map(c => c.id)))
+      // Select all filtered contacts (add to existing selection)
+      for (const contact of filteredContacts) {
+        // Only add if not already selected
+        if (!isContactSelected(contact.id)) {
+          newSet.add(contact.id)
+        }
+      }
     }
+
+    setSelectedContactIds(newSet)
   }
 
   return (
@@ -528,7 +679,7 @@ export function AudiencesManagerSimple() {
                   <div>
                     <Label className="text-base font-semibold">Select Subscribers</Label>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      <span className="font-semibold text-primary">{selectedContactIds.size}</span> of {contacts.length} selected
+                      <span className="font-semibold text-primary">{actualSelectedCount}</span> of {contacts.length} selected
                     </p>
                   </div>
                   <Button
@@ -538,7 +689,7 @@ export function AudiencesManagerSimple() {
                     onClick={toggleSelectAll}
                     className="h-9"
                   >
-                    {selectedContactIds.size === filteredContacts.length && filteredContacts.length > 0 ? "Deselect All" : "Select All"}
+                    {filteredContacts.length > 0 && filteredContacts.every(c => isContactSelected(c.id)) ? "Deselect All" : "Select All"}
                   </Button>
                 </div>
 
@@ -550,23 +701,47 @@ export function AudiencesManagerSimple() {
                     </TabsTrigger>
                     <TabsTrigger value="selected" className="text-xs sm:text-sm">
                       <Check className="h-3 w-3 mr-1 text-green-600" />
-                      Selected ({selectedContactIds.size})
+                      Selected ({actualSelectedCount})
                     </TabsTrigger>
                     <TabsTrigger value="unselected" className="text-xs sm:text-sm">
                       <X className="h-3 w-3 mr-1 text-muted-foreground" />
-                      Unselected ({contacts.length - selectedContactIds.size})
+                      Unselected ({actualUnselectedCount})
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
 
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by name, email, or company..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 h-11"
-                  />
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by name, email, or company..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 h-11"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  {trimmedSearchQuery !== "" && (
+                    <p className="text-xs text-muted-foreground px-1">
+                      {noSearchResults ? (
+                        <span className="text-red-500">No results found</span>
+                      ) : (
+                        <>
+                          Found <span className="font-semibold text-foreground">{searchMatchesAll.length}</span> subscriber{searchMatchesAll.length !== 1 ? 's' : ''} matching "{searchQuery}"
+                          {viewFilter !== "all" && filteredContacts.length !== searchMatchesAll.length && (
+                            <span> ({filteredContacts.length} in current view)</span>
+                          )}
+                        </>
+                      )}
+                    </p>
+                  )}
                 </div>
 
                 <Card className="border-2 max-h-96 overflow-y-auto">
@@ -574,9 +749,30 @@ export function AudiencesManagerSimple() {
                     <div className="flex items-center justify-center py-10">
                       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                     </div>
+                  ) : noSearchResults ? (
+                    <div className="text-center py-10">
+                      <div className="text-muted-foreground">
+                        <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p className="font-medium">No subscriber found for "{searchQuery}"</p>
+                        <p className="text-sm mt-1">Try a different name or email</p>
+                      </div>
+                    </div>
                   ) : filteredContacts.length === 0 ? (
                     <div className="text-center py-10 text-muted-foreground">
-                      {viewFilter === "selected" ? (
+                      {trimmedSearchQuery !== "" ? (
+                        <div>
+                          <p className="font-medium">No {viewFilter === "selected" ? "selected" : "unselected"} subscribers match "{searchQuery}"</p>
+                          <p className="text-sm mt-1">
+                            {searchMatchesAll.length} subscriber{searchMatchesAll.length !== 1 ? 's' : ''} found in total -
+                            <button
+                              onClick={() => setViewFilter("all")}
+                              className="text-primary hover:underline ml-1"
+                            >
+                              view all results
+                            </button>
+                          </p>
+                        </div>
+                      ) : viewFilter === "selected" ? (
                         <p>No subscribers selected yet</p>
                       ) : viewFilter === "unselected" ? (
                         <p>All subscribers are selected</p>
@@ -586,12 +782,12 @@ export function AudiencesManagerSimple() {
                     </div>
                   ) : (
                     <div className="divide-y">
-                      {filteredContacts.map((contact) => {
-                        const isSelected = selectedContactIds.has(contact.id)
+                      {filteredContacts.map((contact, index) => {
+                        const isSelected = isContactSelected(contact.id)
                         const displayName = contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.email
                         return (
                           <div
-                            key={contact.id}
+                            key={`${contact.id}-${index}`}
                             className={`flex items-center gap-3 p-4 hover:bg-accent/50 transition-colors cursor-pointer ${
                               isSelected ? "bg-green-50 dark:bg-green-950/20 border-l-4 border-l-green-500" : ""
                             }`}
@@ -641,7 +837,7 @@ export function AudiencesManagerSimple() {
                 </Button>
                 <Button
                   onClick={handleSave}
-                  disabled={isSaving || !name.trim() || selectedContactIds.size === 0}
+                  disabled={isSaving || !name.trim() || actualSelectedCount === 0}
                   className="flex-1 h-11 shadow-sm bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white"
                 >
                   {isSaving ? (

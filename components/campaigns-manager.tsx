@@ -399,7 +399,14 @@ export function CampaignsManager() {
                   <div
                     key={campaign.id}
                     className="group flex items-center gap-4 rounded-lg border border-border/40 p-4 transition-all hover:border-primary/50 hover:bg-accent/50 hover:shadow-md cursor-pointer"
-                    onClick={() => router.push(`/campaigns/${campaign.id}`)}
+                    onClick={() => {
+                      // Draft campaigns open directly in edit mode
+                      if (campaign.status === "draft") {
+                        handleEdit(campaign.id)
+                      } else {
+                        router.push(`/campaigns/${campaign.id}`)
+                      }
+                    }}
                   >
                     <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10 transition-all group-hover:ring-2 group-hover:ring-primary/30">
                       <Mail className="h-5 w-5 text-primary" />
@@ -439,11 +446,25 @@ export function CampaignsManager() {
                         className="gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
                         onClick={(e) => {
                           e.stopPropagation()
-                          router.push(`/campaigns/${campaign.id}`)
+                          // Draft campaigns open in edit mode
+                          if (campaign.status === "draft") {
+                            handleEdit(campaign.id)
+                          } else {
+                            router.push(`/campaigns/${campaign.id}`)
+                          }
                         }}
                       >
-                        <Eye className="h-4 w-4" />
-                        <span className="hidden sm:inline">View</span>
+                        {campaign.status === "draft" ? (
+                          <>
+                            <Edit className="h-4 w-4" />
+                            <span className="hidden sm:inline">Edit</span>
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-4 w-4" />
+                            <span className="hidden sm:inline">View</span>
+                          </>
+                        )}
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -456,16 +477,18 @@ export function CampaignsManager() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              router.push(`/campaigns/${campaign.id}`)
-                            }}
-                          >
-                            <Eye className="mr-2 h-4 w-4" />
-                            View Details
-                          </DropdownMenuItem>
-                          {(campaign.status === "draft" || campaign.status === "queued") && (
+                          {campaign.status !== "draft" && (
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                router.push(`/campaigns/${campaign.id}`)
+                              }}
+                            >
+                              <Eye className="mr-2 h-4 w-4" />
+                              View Details
+                            </DropdownMenuItem>
+                          )}
+                          {campaign.status === "queued" && (
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation()

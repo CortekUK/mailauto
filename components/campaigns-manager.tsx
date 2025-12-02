@@ -466,74 +466,7 @@ export function CampaignsManager() {
                           </>
                         )}
                       </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-9 w-9 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {campaign.status !== "draft" && (
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                router.push(`/campaigns/${campaign.id}`)
-                              }}
-                            >
-                              <Eye className="mr-2 h-4 w-4" />
-                              View Details
-                            </DropdownMenuItem>
-                          )}
-                          {campaign.status === "queued" && (
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleEdit(campaign.id)
-                              }}
-                            >
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDuplicate(campaign.id, campaign.subject)
-                            }}
-                          >
-                            <Copy className="mr-2 h-4 w-4" />
-                            Duplicate
-                          </DropdownMenuItem>
-                          {(campaign.status === "draft" || campaign.status === "queued") && (
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleCancel(campaign.id, campaign.subject)
-                              }}
-                              className="text-orange-600 focus:text-orange-600"
-                            >
-                              <Ban className="mr-2 h-4 w-4" />
-                              Cancel Campaign
-                            </DropdownMenuItem>
-                          )}
-                          {(campaign.status === "draft" || campaign.status === "queued" || campaign.status === "failed") && (
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDelete(campaign.id, campaign.subject)
-                              }}
-                              className="text-red-600 focus:text-red-600"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                   
                     </div>
                   </div>
                 ))}

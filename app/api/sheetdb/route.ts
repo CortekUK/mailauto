@@ -14,14 +14,106 @@ const supabaseAdmin = createClient(
   }
 );
 
-// Helper function to trigger sync to Supabase
-async function triggerSync(request: NextRequest) {
+// Helper function to sync a single contact to Supabase immediately
+async function syncContactToSupabase(sheetData: any) {
+  try {
+    const email = (sheetData['Email 1'] || '').toLowerCase().trim();
+    if (!email) return;
+
+    const firstName = sheetData['First Name'] || '';
+    const lastName = sheetData['Last Name'] || '';
+
+    const contact = {
+      email,
+      name: `${firstName} ${lastName}`.trim() || null,
+      first_name: firstName?.trim() || null,
+      last_name: lastName?.trim() || null,
+      phone: sheetData['Phone 1']?.trim() || null,
+      company: sheetData['Company']?.trim() || null,
+      city: sheetData['Address 1 - City']?.trim() || null,
+      state: sheetData['Address 1 - State/Region']?.trim() || null,
+      country: sheetData['Address 1 - Country']?.trim() || null,
+      labels: sheetData['Labels']?.trim() || null,
+      status: 'active',
+      source: 'sheetdb',
+      tags: [],
+    };
+
+    // Check if contact exists
+    const { data: existing } = await supabaseAdmin
+      .from('contacts')
+      .select('id')
+      .eq('email', email)
+      .single();
+
+    if (existing) {
+      await supabaseAdmin
+        .from('contacts')
+        .update({ ...contact, updated_at: new Date().toISOString() })
+        .eq('email', email);
+      console.log(`✅ Updated contact in Supabase: ${email}`);
+    } else {
+      await supabaseAdmin.from('contacts').insert(contact);
+      console.log(`✅ Inserted contact in Supabase: ${email}`);
+    }
+
+    // Update audience count
+    await updateAudienceCount();
+  } catch (error) {
+    console.error('Error syncing contact to Supabase:', error);
+  }
+}
+
+// Helper function to delete a contact from Supabase
+async function deleteContactFromSupabase(email: string) {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    await supabaseAdmin
+      .from('contacts')
+      .delete()
+      .eq('email', normalizedEmail);
+    console.log(`✅ Deleted contact from Supabase: ${normalizedEmail}`);
+
+    // Update audience count
+    await updateAudienceCount();
+  } catch (error) {
+    console.error('Error deleting contact from Supabase:', error);
+  }
+}
+
+// Helper function to update audience count
+async function updateAudienceCount() {
+  try {
+    const { data: allSubsAudience } = await supabaseAdmin
+      .from('audiences')
+      .select('id')
+      .eq('type', 'sheetdb')
+      .single();
+
+    if (allSubsAudience) {
+      const { count } = await supabaseAdmin
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active');
+
+      await supabaseAdmin
+        .from('audiences')
+        .update({ contact_count: count || 0 })
+        .eq('id', allSubsAudience.id);
+    }
+  } catch (error) {
+    console.error('Error updating audience count:', error);
+  }
+}
+
+// Helper function to trigger full sync to Supabase (for bulk operations)
+async function triggerFullSync(request: NextRequest) {
   try {
     const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
     const host = request.headers.get('host') || 'localhost:3000';
     const baseUrl = `${protocol}://${host}`;
 
-    console.log('🔄 Auto-triggering sync to Supabase...');
+    console.log('🔄 Auto-triggering full sync to Supabase...');
 
     // Trigger sync in background (don't await to avoid slowing down the response)
     fetch(`${baseUrl}/api/sync/sheetdb-to-supabase`, {
@@ -81,8 +173,8 @@ export async function POST(request: NextRequest) {
     const result = await sheetDBService.create(data, { sheet });
     console.log('POST result:', result);
 
-    // Auto-sync to Supabase
-    triggerSync(request);
+    // Immediately sync to Supabase for real-time updates
+    await syncContactToSupabase(data);
 
     return NextResponse.json({ success: true, data: result }, { status: 201 });
   } catch (error: any) {
@@ -109,8 +201,8 @@ export async function PUT(request: NextRequest) {
 
     const result = await sheetDBService.update(columnName, columnValue, data, { sheet });
 
-    // Auto-sync to Supabase
-    triggerSync(request);
+    // Immediately sync to Supabase for real-time updates
+    await syncContactToSupabase(data);
 
     return NextResponse.json({ success: true, data: result }, { status: 200 });
   } catch (error: any) {
@@ -137,10 +229,13 @@ export async function DELETE(request: NextRequest) {
 
     const result = await sheetDBService.delete(columnName, columnValue, { sheet });
 
-    // If deleting by email, also remove from all audiences
+    // If deleting by email, also remove from Supabase and all audiences
     if (columnName === 'Email 1' && columnValue) {
       const deletedEmail = columnValue.toLowerCase();
-      console.log(`🗑️ Removing ${deletedEmail} from all audiences...`);
+      console.log(`🗑️ Removing ${deletedEmail} from Supabase and all audiences...`);
+
+      // Delete from Supabase contacts
+      await deleteContactFromSupabase(deletedEmail);
 
       // Get all audiences that contain this email
       const { data: audiences, error: fetchError } = await supabaseAdmin
@@ -169,9 +264,6 @@ export async function DELETE(request: NextRequest) {
         }
       }
     }
-
-    // Auto-sync to Supabase
-    triggerSync(request);
 
     return NextResponse.json({ success: true, data: result }, { status: 200 });
   } catch (error: any) {

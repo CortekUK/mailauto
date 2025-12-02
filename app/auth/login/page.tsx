@@ -174,17 +174,7 @@ function LoginForm() {
             </Button>
           </form>
 
-          <div className="text-center pt-2">
-            <p className="text-sm text-muted-foreground">
-              Don't have an account?{" "}
-              <Link
-                href="/auth/sign-up"
-                className="font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-              >
-                Create a free account
-              </Link>
-            </p>
-          </div>
+     
 
           <div className="pt-8 space-y-3">
             <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">

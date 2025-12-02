@@ -38,8 +38,10 @@ import {
   Ban,
   Loader2,
   RefreshCw,
+  Clock,
+  Calendar,
 } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow, format } from "date-fns"
 
 interface Campaign {
   id: string
@@ -50,6 +52,8 @@ interface Campaign {
   html: string
   text_fallback: string
   scheduled_at?: string
+  sent_at?: string
+  created_at?: string
   audiences?: { id: string; name: string }
   stats?: {
     sent: number
@@ -250,11 +254,38 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <h1 className="text-balance text-3xl font-semibold tracking-tight">{campaign.subject}</h1>
-              <Badge className={statusColors[campaign.status] || statusColors.draft}>{campaign.status}</Badge>
+              <Badge className={statusColors[campaign.status] || statusColors.draft}>{campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}</Badge>
             </div>
             <p className="text-sm text-muted-foreground">
               To: {campaign.audiences?.name || `${recipients.length} recipients`} • From: {campaign.from_name} ({campaign.from_email})
             </p>
+            {/* Date/Time Information */}
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              {campaign.status === "sent" && campaign.sent_at && (
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                  Sent on {format(new Date(campaign.sent_at), "MMM d, yyyy 'at' h:mm a")}
+                </span>
+              )}
+              {campaign.status === "queued" && campaign.scheduled_at && (
+                <span className="flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-blue-500" />
+                  Scheduled for {format(new Date(campaign.scheduled_at), "MMM d, yyyy 'at' h:mm a")}
+                </span>
+              )}
+              {campaign.status === "sending" && (
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+                  Currently sending...
+                </span>
+              )}
+              {campaign.created_at && (
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5" />
+                  Created {formatDistanceToNow(new Date(campaign.created_at), { addSuffix: true })}
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>

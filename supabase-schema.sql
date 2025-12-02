@@ -220,7 +220,28 @@ CREATE INDEX IF NOT EXISTS idx_campaign_events_type ON campaign_events(event_typ
 CREATE INDEX IF NOT EXISTS idx_campaign_events_created_at ON campaign_events(created_at DESC);
 
 -- ================================================
--- 8. SYNC_LOG TABLE
+-- 8. SETTINGS TABLE
+-- ================================================
+-- Store application settings and default values
+CREATE TABLE IF NOT EXISTS settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- Default campaign values
+  default_book_link TEXT DEFAULT '',
+  default_discount_code TEXT DEFAULT '',
+  brand_logo_url TEXT DEFAULT '',
+
+  -- Webhook configuration
+  webhook_url TEXT DEFAULT '',
+  webhook_signing_secret TEXT DEFAULT '',
+
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ================================================
+-- 9. SYNC_LOG TABLE
 -- ================================================
 -- Track SheetDB to Supabase synchronization
 CREATE TABLE IF NOT EXISTS sync_log (
@@ -274,6 +295,9 @@ CREATE TRIGGER update_campaigns_updated_at BEFORE UPDATE ON campaigns
 CREATE TRIGGER update_campaign_recipients_updated_at BEFORE UPDATE ON campaign_recipients
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_settings_updated_at BEFORE UPDATE ON settings
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- ================================================
 -- ROW LEVEL SECURITY (RLS)
 -- ================================================
@@ -287,6 +311,7 @@ ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campaign_recipients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campaign_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sync_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 
 -- Create policies (allow all for authenticated users - adjust based on your needs)
 CREATE POLICY "Allow all for authenticated users" ON contacts
@@ -311,6 +336,9 @@ CREATE POLICY "Allow all for authenticated users" ON campaign_events
   FOR ALL USING (auth.role() = 'authenticated');
 
 CREATE POLICY "Allow all for authenticated users" ON sync_log
+  FOR ALL USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Allow all for authenticated users" ON settings
   FOR ALL USING (auth.role() = 'authenticated');
 
 -- ================================================

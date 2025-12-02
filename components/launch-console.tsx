@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
 import { Confirm } from "@/components/ui/confirm"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { Calendar, Clock, CheckCircle2, XCircle, Loader2, Mail, Save, Rocket, AlertCircle, Send } from "lucide-react"
@@ -271,18 +270,30 @@ export function LaunchConsole() {
 
     if (!validation.isValid) {
       setValidationErrors(validation.errors)
-      toast({
-        title: "Validation errors",
-        description: "Please fix the errors before scheduling",
-        variant: "destructive",
-      })
-      return
-    }
 
-    if (!draftId) {
+      // Map error keys to field IDs for scrolling
+      const fieldIdMap: Record<string, string> = {
+        fromEmail: "from-email",
+        subject: "subject",
+        audience: "audience",
+        htmlBody: "html-content",
+        schedule: "scheduled-at",
+      }
+
+      // Find the first error and scroll to it
+      const firstErrorKey = Object.keys(validation.errors)[0]
+      const fieldId = fieldIdMap[firstErrorKey]
+      if (fieldId) {
+        const element = document.getElementById(fieldId)
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "center" })
+          element.focus()
+        }
+      }
+
       toast({
-        title: "Save draft first",
-        description: "Please save your draft before scheduling",
+        title: "Missing required fields",
+        description: "Please fill in all required fields",
         variant: "destructive",
       })
       return
@@ -292,15 +303,47 @@ export function LaunchConsole() {
   }
 
   async function confirmQueue() {
-    if (!draftId) return
-
     setShowConfirmModal(false)
     setIsQueueing(true)
-    try {
-      // IMPORTANT: Save draft first to ensure scheduled_at is saved to database
-      await handleSaveDraft(true)
 
-      const result = await queueCampaign(draftId)
+    try {
+      // Get the selected audience to access its type
+      const selectedAudience = audiences.find(a => a.id === audienceId)
+      const dbAudienceType = selectedAudience?.type === 'manual' ? 'saved' : (selectedAudience?.type || 'saved')
+
+      // Handle scheduled_at with proper timezone handling
+      let scheduledAtISO = undefined
+      if (scheduleType === "schedule" && scheduledAt) {
+        const date = new Date(scheduledAt)
+        const tzOffset = -date.getTimezoneOffset()
+        const offsetHours = Math.floor(Math.abs(tzOffset) / 60).toString().padStart(2, '0')
+        const offsetMins = (Math.abs(tzOffset) % 60).toString().padStart(2, '0')
+        const offsetSign = tzOffset >= 0 ? '+' : '-'
+        scheduledAtISO = `${scheduledAt}:00${offsetSign}${offsetHours}:${offsetMins}`
+      }
+
+      // Save campaign first (create if new, update if exists)
+      const payload = {
+        id: draftId || undefined,
+        subject,
+        from_name: fromName,
+        from_email: fromEmail,
+        preheader: preheader || undefined,
+        audience_id: audienceId,
+        audience_type: dbAudienceType,
+        html: htmlContent,
+        text_fallback: textFallback || undefined,
+        scheduled_at: scheduledAtISO,
+        attachments,
+        status: "draft",
+      }
+
+      const savedCampaign = await createOrUpdateCampaign(payload)
+      const campaignId = savedCampaign.id
+      setDraftId(campaignId)
+
+      // Now queue the campaign
+      await queueCampaign(campaignId)
 
       const isScheduled = scheduleType === "schedule" && scheduledAt && new Date(scheduledAt) > new Date()
 
@@ -311,10 +354,10 @@ export function LaunchConsole() {
           : "Your campaign is being sent now",
       })
 
-      window.location.href = `/campaigns/${draftId}`
+      window.location.href = `/campaigns/${campaignId}`
     } catch (error: any) {
       toast({
-        title: "Error queueing campaign",
+        title: "Error sending campaign",
         description: error.message,
         variant: "destructive",
       })
@@ -406,17 +449,6 @@ export function LaunchConsole() {
     scheduledAt,
     senderEmails,
   })
-
-  const canSchedule = Boolean(draftId) && validation.isValid
-
-  const getScheduleTooltip = () => {
-    if (!draftId) return "Save draft first"
-    if (!validation.isValid) {
-      const firstError = Object.values(validation.errors)[0]
-      return firstError
-    }
-    return ""
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -809,28 +841,15 @@ export function LaunchConsole() {
               {isSavingDraft ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               Save Draft
             </Button>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="w-full sm:ml-auto sm:w-auto">
-                    <Button
-                      onClick={handleScheduleClick}
-                      disabled={!canSchedule || isQueueing}
-                      size="lg"
-                      className="w-full h-12 gap-2 font-semibold text-base bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white shadow-lg shadow-orange-600/20 dark:from-orange-500 dark:to-orange-600 dark:hover:from-orange-600 dark:hover:to-orange-700"
-                    >
-                      {isQueueing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Rocket className="h-5 w-5" />}
-                      Schedule & Send
-                    </Button>
-                  </div>
-                </TooltipTrigger>
-                {!canSchedule && (
-                  <TooltipContent side="top" className="max-w-xs">
-                    <p className="text-sm font-medium">{getScheduleTooltip()}</p>
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </TooltipProvider>
+            <Button
+              onClick={handleScheduleClick}
+              disabled={isQueueing}
+              size="lg"
+              className="w-full sm:ml-auto sm:w-auto h-12 gap-2 font-semibold text-base bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white shadow-lg shadow-orange-600/20 dark:from-orange-500 dark:to-orange-600 dark:hover:from-orange-600 dark:hover:to-orange-700"
+            >
+              {isQueueing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Rocket className="h-5 w-5" />}
+              Schedule & Send
+            </Button>
           </CardFooter>
         </Card>
       </div>

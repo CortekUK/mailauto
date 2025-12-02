@@ -169,14 +169,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // Trigger immediate send for campaigns without future scheduling
     console.log(`Sending campaign ${id} immediately...`)
 
-    // Call send function directly instead of HTTP request
+    // For large campaigns (100+), just return queued and let cron handle all batches
+    // This avoids timeout issues and provides consistent behavior
+    const IMMEDIATE_SEND_THRESHOLD = 100
+
+    if (recipients.length > IMMEDIATE_SEND_THRESHOLD) {
+      console.log(`📦 Large campaign (${recipients.length} recipients) - will be processed in batches via cron`)
+      return NextResponse.json({
+        ...data,
+        message: `Campaign queued with ${recipients.length} recipients. Sending in batches (this may take a few minutes).`,
+        batchProcessing: true,
+        totalRecipients: recipients.length,
+        estimatedMinutes: Math.ceil(recipients.length / 100)
+      })
+    }
+
+    // For smaller campaigns, send immediately
     const sendResult = await sendCampaignEmails(id)
 
     if (sendResult.success) {
       console.log(`Campaign ${id} sent successfully:`, sendResult.stats)
       return NextResponse.json({
         ...data,
-        status: 'sent',
+        status: sendResult.stats?.hasMore ? 'sending' : 'sent',
         sendResult: sendResult.stats
       })
     } else {

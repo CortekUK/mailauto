@@ -22,6 +22,9 @@ export interface SendCampaignResult {
   };
 }
 
+// Maximum emails to send per batch (to avoid timeout)
+const BATCH_SIZE = 100;
+
 export async function sendCampaignEmails(campaignId: string): Promise<SendCampaignResult> {
   try {
     console.log(`📧 Starting to send campaign: ${campaignId}`);
@@ -51,7 +54,20 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
       .update({ status: 'sending' })
       .eq('id', campaignId);
 
-    // Step 3: Get campaign recipients
+    // Step 3: Get settings for default values (book_link, discount_code)
+    const { data: settings } = await supabaseAdmin
+      .from('settings')
+      .select('*')
+      .limit(1)
+      .single();
+
+    const defaultSettings = {
+      book_link: settings?.default_book_link || '',
+      discount_code: settings?.default_discount_code || '',
+      brand_logo_url: settings?.brand_logo_url || '',
+    };
+
+    // Step 4: Get campaign recipients
     const { data: campaignRecipients, error: recipientsError } = await supabaseAdmin
       .from('campaign_recipients')
       .select(`
@@ -75,7 +91,7 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
       return { success: false, error: 'Failed to fetch recipients' };
     }
 
-    const recipients = campaignRecipients?.map((cr: any) => ({
+    const allRecipients = campaignRecipients?.map((cr: any) => ({
       recipient_id: cr.id,
       contact_id: cr.contacts?.id || cr.contact_id,
       email: cr.email || cr.contacts?.email,
@@ -89,7 +105,15 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
       country: cr.contacts?.country,
     })) || [];
 
-    console.log(`👥 Found ${recipients.length} recipients`);
+    console.log(`👥 Found ${allRecipients.length} pending recipients`);
+
+    // Process only a batch at a time to avoid timeout
+    const recipients = allRecipients.slice(0, BATCH_SIZE);
+    const hasMoreRecipients = allRecipients.length > BATCH_SIZE;
+
+    if (hasMoreRecipients) {
+      console.log(`📦 Processing batch of ${recipients.length} (${allRecipients.length - BATCH_SIZE} remaining for next run)`);
+    }
 
     if (recipients.length === 0) {
       await supabaseAdmin
@@ -107,6 +131,7 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
     for (const recipient of recipients) {
       try {
         const variables = {
+          // Contact-specific variables
           first_name: recipient.first_name || recipient.name?.split(' ')[0] || '',
           last_name: recipient.last_name || recipient.name?.split(' ').slice(1).join(' ') || '',
           name: recipient.name || `${recipient.first_name || ''} ${recipient.last_name || ''}`.trim(),
@@ -116,8 +141,13 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
           city: recipient.city || '',
           state: recipient.state || '',
           country: recipient.country || '',
+          // Default settings variables
+          book_link: defaultSettings.book_link,
+          discount_code: defaultSettings.discount_code,
+          brand_logo_url: defaultSettings.brand_logo_url,
         };
 
+        const personalizedSubject = replaceTemplateVariables(campaign.subject, variables);
         const personalizedHtml = replaceTemplateVariables(campaign.html, variables);
         const personalizedText = campaign.text_fallback
           ? replaceTemplateVariables(campaign.text_fallback, variables)
@@ -126,7 +156,7 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
         const result = await sendEmail({
           to: recipient.email,
           from: campaign.from_email,
-          subject: campaign.subject,
+          subject: personalizedSubject,
           html: personalizedHtml,
           text: personalizedText,
           attachments: campaign.attachments || undefined
@@ -195,28 +225,62 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
       }
     }
 
-    // Step 5: Update campaign with final status
-    const finalStatus = failedCount === recipients.length ? 'failed' : 'sent';
+    // Step 5: Update campaign with status
+    // If there are more recipients, keep status as 'sending' so cron picks it up again
+    // Otherwise, mark as 'sent' or 'failed'
 
-    await supabaseAdmin
-      .from('campaigns')
-      .update({
-        status: finalStatus,
-        sent_at: new Date().toISOString(),
-        total_recipients: recipients.length,
-        sent_count: sentCount,
-        failed_count: failedCount
-      })
-      .eq('id', campaignId);
+    if (hasMoreRecipients) {
+      // Keep as 'queued' so cron job picks it up again for next batch
+      // Update counts but don't change status
+      const { data: currentCampaign } = await supabaseAdmin
+        .from('campaigns')
+        .select('sent_count, failed_count')
+        .eq('id', campaignId)
+        .single();
 
-    console.log(`✅ Campaign send completed. Sent: ${sentCount}, Failed: ${failedCount}`);
+      await supabaseAdmin
+        .from('campaigns')
+        .update({
+          status: 'queued', // Stay queued for next batch
+          sent_count: (currentCampaign?.sent_count || 0) + sentCount,
+          failed_count: (currentCampaign?.failed_count || 0) + failedCount
+        })
+        .eq('id', campaignId);
+
+      console.log(`📦 Batch completed. Sent: ${sentCount}, Failed: ${failedCount}. More recipients pending.`);
+    } else {
+      // All recipients processed - finalize campaign
+      const { data: currentCampaign } = await supabaseAdmin
+        .from('campaigns')
+        .select('sent_count, failed_count, total_recipients')
+        .eq('id', campaignId)
+        .single();
+
+      const totalSent = (currentCampaign?.sent_count || 0) + sentCount;
+      const totalFailed = (currentCampaign?.failed_count || 0) + failedCount;
+      const finalStatus = totalSent === 0 ? 'failed' : 'sent';
+
+      await supabaseAdmin
+        .from('campaigns')
+        .update({
+          status: finalStatus,
+          sent_at: new Date().toISOString(),
+          sent_count: totalSent,
+          failed_count: totalFailed
+        })
+        .eq('id', campaignId);
+
+      console.log(`✅ Campaign completed. Total Sent: ${totalSent}, Total Failed: ${totalFailed}`);
+    }
 
     return {
       success: true,
       stats: {
         total: recipients.length,
         sent: sentCount,
-        failed: failedCount
+        failed: failedCount,
+        hasMore: hasMoreRecipients,
+        remaining: hasMoreRecipients ? allRecipients.length - BATCH_SIZE : 0
       }
     };
 

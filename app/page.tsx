@@ -1,4 +1,5 @@
 //app/mainpage .tsx
+
 import { LaunchConsole } from "@/components/launch-console"
 import type { Metadata } from "next"
 import { Suspense } from "react"

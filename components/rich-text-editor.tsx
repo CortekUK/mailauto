@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +24,7 @@ import {
   X,
   FileText,
   Loader2,
+  Trash2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -72,11 +73,152 @@ export function RichTextEditor({
   const [isFocused, setIsFocused] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
 
+  // Image resize state - using refs to avoid re-render issues during drag
+  const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null)
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
+  const resizeRef = useRef({
+    isResizing: false,
+    corner: "",
+    startX: 0,
+    startY: 0,
+    startWidth: 0,
+    startHeight: 0,
+    aspectRatio: 1,
+  })
+
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== value) {
       editorRef.current.innerHTML = value
     }
   }, [value])
+
+  // Handle click on editor to select/deselect images
+  const handleEditorClick = useCallback((e: React.MouseEvent) => {
+    // Don't deselect if we're in the middle of resizing
+    if (resizeRef.current.isResizing) return
+
+    const target = e.target as HTMLElement
+    if (target.tagName === "IMG") {
+      const img = target as HTMLImageElement
+      setSelectedImage(img)
+      setImageSize({ width: img.offsetWidth, height: img.offsetHeight })
+    } else {
+      setSelectedImage(null)
+    }
+  }, [])
+
+  // Prevent default drag behavior on images
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+
+    const preventDrag = (e: DragEvent) => {
+      if ((e.target as HTMLElement)?.tagName === "IMG") {
+        e.preventDefault()
+      }
+    }
+
+    editor.addEventListener("dragstart", preventDrag)
+    return () => editor.removeEventListener("dragstart", preventDrag)
+  }, [])
+
+  // Handle click outside to deselect image
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (resizeRef.current.isResizing) return
+      const target = e.target as HTMLElement
+      // Don't deselect if clicking on resize handles
+      if (target.closest('[data-resize-handle]')) return
+      if (selectedImage && editorRef.current && !editorRef.current.contains(target)) {
+        setSelectedImage(null)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [selectedImage])
+
+  // Resize handlers using document-level events for reliability
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent, corner: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!selectedImage) return
+
+    const r = resizeRef.current
+    r.isResizing = true
+    r.corner = corner
+    r.startX = e.clientX
+    r.startY = e.clientY
+    r.startWidth = selectedImage.offsetWidth
+    r.startHeight = selectedImage.offsetHeight
+    r.aspectRatio = r.startWidth / r.startHeight
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!r.isResizing || !selectedImage) return
+
+      const deltaX = e.clientX - r.startX
+      const deltaY = e.clientY - r.startY
+
+      let newWidth = r.startWidth
+      let newHeight = r.startHeight
+
+      // Calculate new dimensions based on corner being dragged
+      if (r.corner.includes("e")) newWidth = Math.max(50, r.startWidth + deltaX)
+      if (r.corner.includes("w")) newWidth = Math.max(50, r.startWidth - deltaX)
+      if (r.corner.includes("s")) newHeight = Math.max(50, r.startHeight + deltaY)
+      if (r.corner.includes("n")) newHeight = Math.max(50, r.startHeight - deltaY)
+
+      // Maintain aspect ratio for corner handles
+      if (r.corner.length === 2) {
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+          newHeight = newWidth / r.aspectRatio
+        } else {
+          newWidth = newHeight * r.aspectRatio
+        }
+      }
+
+      selectedImage.style.width = `${Math.round(newWidth)}px`
+      selectedImage.style.height = `${Math.round(newHeight)}px`
+      setImageSize({ width: Math.round(newWidth), height: Math.round(newHeight) })
+    }
+
+    const handleMouseUp = () => {
+      r.isResizing = false
+      r.corner = ""
+      document.removeEventListener("mousemove", handleMouseMove)
+      document.removeEventListener("mouseup", handleMouseUp)
+      // Save changes to content
+      if (editorRef.current) {
+        onChange(editorRef.current.innerHTML)
+      }
+    }
+
+    document.addEventListener("mousemove", handleMouseMove)
+    document.addEventListener("mouseup", handleMouseUp)
+  }, [selectedImage, onChange])
+
+  // Delete selected image
+  const deleteSelectedImage = useCallback(() => {
+    if (selectedImage) {
+      selectedImage.remove()
+      setSelectedImage(null)
+      if (editorRef.current) {
+        onChange(editorRef.current.innerHTML)
+      }
+    }
+  }, [selectedImage, onChange])
+
+  // Get image position for resize handles
+  const getImagePosition = useCallback(() => {
+    if (!selectedImage || !editorRef.current) return null
+    const editorRect = editorRef.current.getBoundingClientRect()
+    const imageRect = selectedImage.getBoundingClientRect()
+    return {
+      top: imageRect.top - editorRect.top,
+      left: imageRect.left - editorRect.left,
+      width: imageRect.width,
+      height: imageRect.height,
+    }
+  }, [selectedImage])
 
   const handleInput = () => {
     if (editorRef.current) {
@@ -121,6 +263,9 @@ export function RichTextEditor({
     handleInput()
   }
 
+  // Allowed image types for inline images (SVG not supported by most email clients)
+  const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+
   // Handle inline image upload (embeds in body, not as attachment)
   const handleInlineImageUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -129,8 +274,12 @@ export function RichTextEditor({
 
     try {
       for (const file of Array.from(files)) {
-        if (!file.type.startsWith("image/")) {
-          alert(`File "${file.name}" is not an image.`)
+        if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+          if (file.type === "image/svg+xml") {
+            alert(`SVG images are not supported in emails as most email clients cannot display them. Please use JPG, PNG, GIF, or WebP instead.`)
+          } else {
+            alert(`File "${file.name}" is not a supported image format. Allowed: JPG, PNG, GIF, WebP.`)
+          }
           continue
         }
 
@@ -173,6 +322,17 @@ export function RichTextEditor({
     for (const item of Array.from(items)) {
       if (item.type.startsWith("image/")) {
         e.preventDefault()
+
+        // Check for supported formats
+        if (!ALLOWED_IMAGE_TYPES.includes(item.type)) {
+          if (item.type === "image/svg+xml") {
+            alert("SVG images are not supported in emails as most email clients cannot display them. Please use JPG, PNG, GIF, or WebP instead.")
+          } else {
+            alert("Unsupported image format. Please use JPG, PNG, GIF, or WebP.")
+          }
+          break
+        }
+
         const file = item.getAsFile()
         if (file) {
           setIsUploading(true)
@@ -311,12 +471,12 @@ export function RichTextEditor({
         multiple
         onChange={(e) => handleFileUpload(e.target.files)}
       />
-      {/* Inline image input - images go into body, not attachments */}
+      {/* Inline image input - images go into body, not attachments (no SVG - not supported by email clients) */}
       <input
         ref={inlineImageInputRef}
         type="file"
         className="hidden"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
         multiple
         onChange={(e) => handleInlineImageUpload(e.target.files)}
       />
@@ -425,23 +585,124 @@ export function RichTextEditor({
         >
           + discount_code
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onMouseDown={(e) => {
+            e.preventDefault()
+            insertVariable("{{brand_logo_url}}")
+          }}
+          className="h-8 text-xs font-mono"
+        >
+          + logo_url
+        </Button>
       </div>
 
       {/* Editor */}
-      <div
-        ref={editorRef}
-        contentEditable
-        onInput={handleInput}
-        onPaste={handlePaste}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        className="min-h-[300px] p-4 max-w-none focus:outline-none"
-        style={{
-          lineHeight: "1.6",
-          fontFamily: "inherit",
-        }}
-        data-placeholder={placeholder}
-      />
+      <div className="relative overflow-visible">
+        <div
+          ref={editorRef}
+          contentEditable
+          onInput={handleInput}
+          onPaste={handlePaste}
+          onClick={handleEditorClick}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          className="min-h-[300px] p-4 pt-6 pb-6 max-w-none focus:outline-none"
+          style={{
+            lineHeight: "1.6",
+            fontFamily: "inherit",
+          }}
+          data-placeholder={placeholder}
+        />
+
+        {/* Image Resize Handles */}
+        {selectedImage && !isUploading && (() => {
+          const pos = getImagePosition()
+          if (!pos) return null
+          return (
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                top: pos.top,
+                left: pos.left,
+                width: pos.width,
+                height: pos.height,
+              }}
+            >
+              {/* Selection border */}
+              <div className="absolute inset-0 border-2 border-primary rounded" />
+
+              {/* Corner handles */}
+              {["nw", "ne", "sw", "se"].map((corner) => (
+                <div
+                  key={corner}
+                  data-resize-handle
+                  className="absolute w-4 h-4 bg-primary border-2 border-background rounded-sm pointer-events-auto hover:scale-125 transition-transform shadow-sm"
+                  style={{
+                    top: corner.includes("n") ? -8 : "auto",
+                    bottom: corner.includes("s") ? -8 : "auto",
+                    left: corner.includes("w") ? -8 : "auto",
+                    right: corner.includes("e") ? -8 : "auto",
+                    cursor: corner === "nw" || corner === "se" ? "nwse-resize" : "nesw-resize",
+                  }}
+                  onMouseDown={(e) => handleResizeMouseDown(e, corner)}
+                />
+              ))}
+
+              {/* Edge handles */}
+              {["n", "s", "e", "w"].map((edge) => (
+                <div
+                  key={edge}
+                  data-resize-handle
+                  className="absolute bg-primary border-2 border-background rounded-sm pointer-events-auto hover:scale-125 transition-transform shadow-sm"
+                  style={{
+                    width: edge === "n" || edge === "s" ? 28 : 8,
+                    height: edge === "e" || edge === "w" ? 28 : 8,
+                    top: edge === "n" ? -5 : edge === "s" ? "auto" : "50%",
+                    bottom: edge === "s" ? -5 : "auto",
+                    left: edge === "w" ? -5 : edge === "e" ? "auto" : "50%",
+                    right: edge === "e" ? -5 : "auto",
+                    transform: (edge === "n" || edge === "s") ? "translateX(-50%)" : (edge === "e" || edge === "w") ? "translateY(-50%)" : "none",
+                    cursor: edge === "n" || edge === "s" ? "ns-resize" : "ew-resize",
+                  }}
+                  onMouseDown={(e) => handleResizeMouseDown(e, edge)}
+                />
+              ))}
+
+              {/* Delete button */}
+              <button
+                type="button"
+                data-resize-handle
+                className="absolute -top-10 left-1/2 -translate-x-1/2 p-1.5 bg-destructive text-destructive-foreground rounded-md shadow-lg pointer-events-auto hover:bg-destructive/90 transition-colors"
+                onClick={deleteSelectedImage}
+                title="Delete image"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+
+              {/* Size indicator */}
+              <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-popover text-popover-foreground text-xs rounded shadow-lg pointer-events-none whitespace-nowrap border">
+                {imageSize.width} × {imageSize.height}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Upload Loading Overlay */}
+        {isUploading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-3 p-4 rounded-lg bg-card border shadow-lg">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <div className="text-center">
+                <p className="text-sm font-medium">Uploading...</p>
+                <p className="text-xs text-muted-foreground">Please wait while your file is being uploaded</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Attachments Preview */}
       {attachments.length > 0 && (
@@ -533,6 +794,19 @@ export function RichTextEditor({
           height: auto;
           border-radius: 0.375rem;
           margin: 0.5rem 0;
+          cursor: pointer;
+          transition: opacity 0.15s;
+          user-select: none;
+          -webkit-user-drag: none;
+          -khtml-user-drag: none;
+          -moz-user-drag: none;
+          -o-user-drag: none;
+        }
+        [contenteditable] img:hover {
+          opacity: 0.9;
+        }
+        [contenteditable] img::selection {
+          background: transparent;
         }
       `}</style>
 

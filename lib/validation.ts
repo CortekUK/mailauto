@@ -60,8 +60,8 @@ export function validateCampaign(data: {
     }
   }
 
-  // Audience validation
-  if (data.audienceType === "saved" && !data.audienceId) {
+  // Audience validation - audience is always required
+  if (!data.audienceId) {
     errors.audience = ValidationMessages.audience.required
   }
 

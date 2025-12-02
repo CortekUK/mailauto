@@ -135,6 +135,60 @@ export function replaceTemplateVariables(
   return result;
 }
 
+// Process HTML for email compatibility - adds inline styles for better rendering
+export function processHtmlForEmail(html: string): string {
+  let result = html;
+
+  // Add inline styles to ordered lists
+  result = result.replace(/<ol(?:\s[^>]*)?>/gi, (match) => {
+    if (match.includes('style=')) {
+      return match.replace(/style="([^"]*)"/, 'style="$1; padding-left: 20px; margin: 10px 0; list-style-type: decimal;"');
+    }
+    return match.replace(/<ol/, '<ol style="padding-left: 20px; margin: 10px 0; list-style-type: decimal;"');
+  });
+
+  // Add inline styles to unordered lists
+  result = result.replace(/<ul(?:\s[^>]*)?>/gi, (match) => {
+    if (match.includes('style=')) {
+      return match.replace(/style="([^"]*)"/, 'style="$1; padding-left: 20px; margin: 10px 0; list-style-type: disc;"');
+    }
+    return match.replace(/<ul/, '<ul style="padding-left: 20px; margin: 10px 0; list-style-type: disc;"');
+  });
+
+  // Add inline styles to list items
+  result = result.replace(/<li(?:\s[^>]*)?>/gi, (match) => {
+    if (match.includes('style=')) {
+      return match.replace(/style="([^"]*)"/, 'style="$1; margin: 5px 0; display: list-item;"');
+    }
+    return match.replace(/<li/, '<li style="margin: 5px 0; display: list-item;"');
+  });
+
+  // Add inline styles to headings
+  result = result.replace(/<h1(?:\s[^>]*)?>/gi, (match) => {
+    if (match.includes('style=')) {
+      return match;
+    }
+    return match.replace(/<h1/, '<h1 style="font-size: 24px; font-weight: bold; margin: 15px 0;"');
+  });
+
+  result = result.replace(/<h2(?:\s[^>]*)?>/gi, (match) => {
+    if (match.includes('style=')) {
+      return match;
+    }
+    return match.replace(/<h2/, '<h2 style="font-size: 20px; font-weight: bold; margin: 12px 0;"');
+  });
+
+  // Add inline styles to preformatted text (code blocks)
+  result = result.replace(/<pre(?:\s[^>]*)?>/gi, (match) => {
+    if (match.includes('style=')) {
+      return match;
+    }
+    return match.replace(/<pre/, '<pre style="background-color: #f4f4f4; padding: 15px; border-radius: 5px; font-family: monospace; overflow-x: auto; margin: 10px 0;"');
+  });
+
+  return result;
+}
+
 // Verify Brevo API connection
 export async function verifyConnection(): Promise<boolean> {
   try {

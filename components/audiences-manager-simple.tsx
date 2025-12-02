@@ -10,7 +10,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { Users, Copy, Edit, Trash2, Plus, Loader2, Target, TrendingUp, Search, Check, X } from "lucide-react"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { listContacts } from "@/lib/api"
 import { formatDistanceToNow } from "date-fns"
 import { PageHeader } from "@/components/page-header"
@@ -190,9 +189,9 @@ export function AudiencesManagerSimple() {
     // Step 2: Apply view filter (selected/unselected/all) on search results
     let filtered = searchFiltered
     if (viewFilter === "selected") {
-      filtered = searchFiltered.filter((c) => checkSelected(c.id))
+      filtered = searchFiltered.filter((c) => checkSelected(c.email))
     } else if (viewFilter === "unselected") {
-      filtered = searchFiltered.filter((c) => !checkSelected(c.id))
+      filtered = searchFiltered.filter((c) => !checkSelected(c.email))
     }
 
     // Step 3: Sort results - best matches first, then selected status
@@ -204,8 +203,8 @@ export function AudiencesManagerSimple() {
         if (aScore !== bScore) return bScore - aScore // Higher score first
       }
       // Then by selected status
-      const aSelected = checkSelected(a.id) ? 0 : 1
-      const bSelected = checkSelected(b.id) ? 0 : 1
+      const aSelected = checkSelected(a.email) ? 0 : 1
+      const bSelected = checkSelected(b.email) ? 0 : 1
       return aSelected - bSelected
     })
 
@@ -296,9 +295,9 @@ export function AudiencesManagerSimple() {
 
     setIsSaving(true)
     try {
-      // Get actual email addresses for selected contacts (not UUIDs!)
+      // Get actual email addresses for selected contacts
       const validContactEmails = contacts
-        .filter(c => isContactSelected(c.id))
+        .filter(c => isContactSelected(c.email))
         .map(c => c.email)
         .filter(email => email) // Filter out any null/undefined emails
 
@@ -426,10 +425,10 @@ export function AudiencesManagerSimple() {
     if (allFilteredSelected && filteredContacts.length > 0) {
       // Deselect only the filtered contacts (keep others selected)
       for (const contact of filteredContacts) {
-        // Find and remove the matching ID (case-insensitive)
-        for (const id of newSet) {
-          if (id.toLowerCase().trim() === contact.id.toLowerCase().trim()) {
-            newSet.delete(id)
+        // Find and remove the matching email (case-insensitive)
+        for (const email of newSet) {
+          if (email.toLowerCase().trim() === contact.email.toLowerCase().trim()) {
+            newSet.delete(email)
             break
           }
         }
@@ -566,7 +565,7 @@ export function AudiencesManagerSimple() {
                         )}
                       </div>
                       <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <Button
+                        {/* <Button
                           size="icon"
                           variant="ghost"
                           className="h-8 w-8 hover:bg-blue-100 hover:text-blue-600"
@@ -577,7 +576,7 @@ export function AudiencesManagerSimple() {
                           title="Duplicate"
                         >
                           <Copy className="h-4 w-4" />
-                        </Button>
+                        </Button> */}
                         <Button
                           size="icon"
                           variant="ghost"
@@ -696,21 +695,40 @@ export function AudiencesManagerSimple() {
                 </div>
 
                 {/* Filter Tabs */}
-                <Tabs value={viewFilter} onValueChange={(v) => setViewFilter(v as "all" | "selected" | "unselected")} className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="all" className="text-xs sm:text-sm">
-                      All ({contacts.length})
-                    </TabsTrigger>
-                    <TabsTrigger value="selected" className="text-xs sm:text-sm">
-                      <Check className="h-3 w-3 mr-1 text-green-600" />
-                      Selected ({actualSelectedCount})
-                    </TabsTrigger>
-                    <TabsTrigger value="unselected" className="text-xs sm:text-sm">
-                      <X className="h-3 w-3 mr-1 text-muted-foreground" />
-                      Unselected ({actualUnselectedCount})
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setViewFilter("all")}
+                    className={`flex-1  text-xs sm:text-sm font-medium rounded-lg border-2 transition-all ${
+                      viewFilter === "all"
+                        ? "bg-primary text-primary-foreground border-primary shadow-md"
+                        : "bg-background text-muted-foreground border-border hover:border-primary/50 hover:bg-accent"
+                    }`}
+                  >
+                    All ({contacts.length})
+                  </button>
+                  <button
+                    onClick={() => setViewFilter("selected")}
+                    className={`flex-1 py-2 text-xs sm:text-sm font-medium rounded-lg border-2 transition-all flex items-center justify-center gap-1 ${
+                      viewFilter === "selected"
+                        ? " text-white bg-green-500 border-green-500 shadow-md"
+                        : "bg-background text-muted-foreground border-border hover:border-green-500/50 hover:bg-green-50 dark:hover:bg-green-950/20"
+                    }`}
+                  >
+                    <Check className="h-3 w-3" />
+                    Selected ({actualSelectedCount})
+                  </button>
+                  <button
+                    onClick={() => setViewFilter("unselected")}
+                    className={`flex-1  text-xs sm:text-sm font-medium rounded-lg border-2 transition-all flex items-center justify-center gap-1 ${
+                      viewFilter === "unselected"
+                        ? "bg-orange-500 text-white border-orange-500 shadow-md"
+                        : "bg-background text-muted-foreground border-border hover:border-orange-500/50 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                    }`}
+                  >
+                    <X className="h-3 w-3" />
+                    Unselected ({actualUnselectedCount})
+                  </button>
+                </div>
 
                 <div className="space-y-2">
                   <div className="relative">

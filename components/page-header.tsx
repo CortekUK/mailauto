@@ -2,7 +2,7 @@ import type { ReactNode } from "react"
 
 interface PageHeaderProps {
   title: string
-  description: string
+  description?: string
   action?: ReactNode
   variant?: "gradient" | "accent" | "default"
   icon?: ReactNode

@@ -27,6 +27,7 @@ import {
   Trash2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
 
 export interface Attachment {
   id: string
@@ -72,6 +73,73 @@ export function RichTextEditor({
   const inlineImageInputRef = useRef<HTMLInputElement>(null)
   const [isFocused, setIsFocused] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const { toast } = useToast()
+
+  // Track active formatting states
+  const [activeFormats, setActiveFormats] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    h1: false,
+    h2: false,
+    alignLeft: false,
+    alignCenter: false,
+    alignRight: false,
+    unorderedList: false,
+    orderedList: false,
+    code: false,
+  })
+
+  // Update active formatting states based on current selection
+  const updateActiveFormats = useCallback(() => {
+    try {
+      // Get format block and normalize it (browsers return different formats like "h1", "H1", "<h1>")
+      const formatBlock = document.queryCommandValue("formatBlock").toLowerCase().replace(/[<>]/g, "")
+
+      // Check if we're inside a list by looking at the selection's parent elements
+      const selection = window.getSelection()
+      let inUnorderedList = false
+      let inOrderedList = false
+
+      if (selection && selection.rangeCount > 0) {
+        let node: Node | null = selection.anchorNode
+        while (node && node !== editorRef.current) {
+          if (node.nodeName === "UL") inUnorderedList = true
+          if (node.nodeName === "OL") inOrderedList = true
+          node = node.parentNode
+        }
+      }
+
+      setActiveFormats({
+        bold: document.queryCommandState("bold"),
+        italic: document.queryCommandState("italic"),
+        underline: document.queryCommandState("underline"),
+        h1: formatBlock === "h1",
+        h2: formatBlock === "h2",
+        alignLeft: document.queryCommandState("justifyLeft"),
+        alignCenter: document.queryCommandState("justifyCenter"),
+        alignRight: document.queryCommandState("justifyRight"),
+        unorderedList: inUnorderedList || document.queryCommandState("insertUnorderedList"),
+        orderedList: inOrderedList || document.queryCommandState("insertOrderedList"),
+        code: formatBlock === "pre",
+      })
+    } catch (e) {
+      // Ignore errors if document commands not available
+    }
+  }, [])
+
+  // Listen for selection changes to update formatting state
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      if (editorRef.current?.contains(document.activeElement) ||
+          editorRef.current === document.activeElement) {
+        updateActiveFormats()
+      }
+    }
+
+    document.addEventListener("selectionchange", handleSelectionChange)
+    return () => document.removeEventListener("selectionchange", handleSelectionChange)
+  }, [updateActiveFormats])
 
   // Image resize state - using refs to avoid re-render issues during drag
   const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null)
@@ -227,9 +295,23 @@ export function RichTextEditor({
   }
 
   const execCommand = (command: string, value?: string) => {
-    document.execCommand(command, false, value)
+    // Handle toggle behavior for formatBlock commands (headings, code)
+    if (command === "formatBlock" && value) {
+      const currentFormat = document.queryCommandValue("formatBlock").toLowerCase().replace(/[<>]/g, "")
+      const targetFormat = value.toLowerCase().replace(/[<>]/g, "")
+
+      // If already in this format, toggle back to paragraph
+      if (currentFormat === targetFormat) {
+        document.execCommand("formatBlock", false, "<p>")
+      } else {
+        document.execCommand(command, false, value)
+      }
+    } else {
+      document.execCommand(command, false, value)
+    }
     editorRef.current?.focus()
     handleInput()
+    updateActiveFormats()
   }
 
   const insertLink = () => {
@@ -255,6 +337,41 @@ export function RichTextEditor({
     }
   }
 
+  // Insert logo as an actual image tag with variable src
+  const insertLogoImage = async () => {
+    // First check if brand_logo_url is set in settings
+    try {
+      const response = await fetch('/api/settings')
+      const settings = await response.json()
+
+      if (!settings.brand_logo_url) {
+        toast({
+          title: "Logo URL Not Set",
+          description: "Please set your Brand Logo URL in Settings → Defaults tab first.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      editorRef.current?.focus()
+      // Use the actual URL for preview in editor, but template variable for sending
+      const logoHtml = `<img src="${settings.brand_logo_url}" alt="Logo" data-variable="brand_logo_url" style="max-width: 200px; height: auto;" />`
+      document.execCommand("insertHTML", false, logoHtml)
+      handleInput()
+
+      toast({
+        title: "Logo Inserted",
+        description: "The logo will be displayed in your email.",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Could not verify logo URL. Please check your settings.",
+        variant: "destructive",
+      })
+    }
+  }
+
   // Insert inline image into the editor content
   const insertInlineImage = (url: string, alt: string = "image") => {
     editorRef.current?.focus()
@@ -276,15 +393,27 @@ export function RichTextEditor({
       for (const file of Array.from(files)) {
         if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
           if (file.type === "image/svg+xml") {
-            alert(`SVG images are not supported in emails as most email clients cannot display them. Please use JPG, PNG, GIF, or WebP instead.`)
+            toast({
+              title: "Unsupported Format",
+              description: "SVG images are not supported in emails as most email clients cannot display them. Please use JPG, PNG, GIF, or WebP instead.",
+              variant: "destructive",
+            })
           } else {
-            alert(`File "${file.name}" is not a supported image format. Allowed: JPG, PNG, GIF, WebP.`)
+            toast({
+              title: "Unsupported Format",
+              description: `File "${file.name}" is not a supported image format. Allowed: JPG, PNG, GIF, WebP.`,
+              variant: "destructive",
+            })
           }
           continue
         }
 
         if (file.size > 10 * 1024 * 1024) {
-          alert(`File "${file.name}" is too large. Maximum size is 10MB.`)
+          toast({
+            title: "File Too Large",
+            description: `File "${file.name}" is too large. Maximum size is 10MB.`,
+            variant: "destructive",
+          })
           continue
         }
 
@@ -307,7 +436,11 @@ export function RichTextEditor({
       }
     } catch (error: any) {
       console.error("Inline image upload error:", error)
-      alert(error.message || "Failed to upload image")
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Failed to upload image",
+        variant: "destructive",
+      })
     } finally {
       setIsUploading(false)
       if (inlineImageInputRef.current) inlineImageInputRef.current.value = ""
@@ -326,9 +459,17 @@ export function RichTextEditor({
         // Check for supported formats
         if (!ALLOWED_IMAGE_TYPES.includes(item.type)) {
           if (item.type === "image/svg+xml") {
-            alert("SVG images are not supported in emails as most email clients cannot display them. Please use JPG, PNG, GIF, or WebP instead.")
+            toast({
+              title: "Unsupported Format",
+              description: "SVG images are not supported in emails as most email clients cannot display them. Please use JPG, PNG, GIF, or WebP instead.",
+              variant: "destructive",
+            })
           } else {
-            alert("Unsupported image format. Please use JPG, PNG, GIF, or WebP.")
+            toast({
+              title: "Unsupported Format",
+              description: "Unsupported image format. Please use JPG, PNG, GIF, or WebP.",
+              variant: "destructive",
+            })
           }
           break
         }
@@ -354,7 +495,11 @@ export function RichTextEditor({
             insertInlineImage(result.url, "pasted-image")
           } catch (error: any) {
             console.error("Paste image upload error:", error)
-            alert(error.message || "Failed to upload pasted image")
+            toast({
+              title: "Upload Failed",
+              description: error.message || "Failed to upload pasted image",
+              variant: "destructive",
+            })
           } finally {
             setIsUploading(false)
           }
@@ -373,7 +518,11 @@ export function RichTextEditor({
     try {
       for (const file of Array.from(files)) {
         if (file.size > 10 * 1024 * 1024) {
-          alert(`File "${file.name}" is too large. Maximum size is 10MB.`)
+          toast({
+            title: "File Too Large",
+            description: `File "${file.name}" is too large. Maximum size is 10MB.`,
+            variant: "destructive",
+          })
           continue
         }
 
@@ -405,7 +554,11 @@ export function RichTextEditor({
       }
     } catch (error: any) {
       console.error("Upload error:", error)
-      alert(error.message || "Failed to upload file")
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Failed to upload file",
+        variant: "destructive",
+      })
     } finally {
       setIsUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -424,15 +577,17 @@ export function RichTextEditor({
     onClick,
     title,
     disabled,
+    isActive,
   }: {
     icon: any
     onClick: () => void
     title: string
     disabled?: boolean
+    isActive?: boolean
   }) => (
     <Button
       type="button"
-      variant="ghost"
+      variant={isActive ? "default" : "ghost"}
       size="sm"
       onMouseDown={(e) => {
         e.preventDefault()
@@ -440,7 +595,12 @@ export function RichTextEditor({
       }}
       title={title}
       disabled={disabled}
-      className="h-8 w-8 p-0 hover:bg-accent"
+      className={cn(
+        "h-8 w-8 p-0",
+        isActive
+          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+          : "hover:bg-accent"
+      )}
     >
       <Icon className="h-4 w-4" />
     </Button>
@@ -488,30 +648,30 @@ export function RichTextEditor({
 
         <Separator orientation="vertical" className="h-6 mx-1" />
 
-        <ToolbarButton icon={Bold} onClick={() => execCommand("bold")} title="Bold (Ctrl+B)" />
-        <ToolbarButton icon={Italic} onClick={() => execCommand("italic")} title="Italic (Ctrl+I)" />
-        <ToolbarButton icon={Underline} onClick={() => execCommand("underline")} title="Underline (Ctrl+U)" />
+        <ToolbarButton icon={Bold} onClick={() => execCommand("bold")} title="Bold (Ctrl+B)" isActive={activeFormats.bold} />
+        <ToolbarButton icon={Italic} onClick={() => execCommand("italic")} title="Italic (Ctrl+I)" isActive={activeFormats.italic} />
+        <ToolbarButton icon={Underline} onClick={() => execCommand("underline")} title="Underline (Ctrl+U)" isActive={activeFormats.underline} />
 
         <Separator orientation="vertical" className="h-6 mx-1" />
 
-        <ToolbarButton icon={Heading1} onClick={() => execCommand("formatBlock", "<h1>")} title="Heading 1" />
-        <ToolbarButton icon={Heading2} onClick={() => execCommand("formatBlock", "<h2>")} title="Heading 2" />
+        <ToolbarButton icon={Heading1} onClick={() => execCommand("formatBlock", "<h1>")} title="Heading 1" isActive={activeFormats.h1} />
+        <ToolbarButton icon={Heading2} onClick={() => execCommand("formatBlock", "<h2>")} title="Heading 2" isActive={activeFormats.h2} />
 
         <Separator orientation="vertical" className="h-6 mx-1" />
 
-        <ToolbarButton icon={AlignLeft} onClick={() => execCommand("justifyLeft")} title="Align Left" />
-        <ToolbarButton icon={AlignCenter} onClick={() => execCommand("justifyCenter")} title="Align Center" />
-        <ToolbarButton icon={AlignRight} onClick={() => execCommand("justifyRight")} title="Align Right" />
+        <ToolbarButton icon={AlignLeft} onClick={() => execCommand("justifyLeft")} title="Align Left" isActive={activeFormats.alignLeft} />
+        <ToolbarButton icon={AlignCenter} onClick={() => execCommand("justifyCenter")} title="Align Center" isActive={activeFormats.alignCenter} />
+        <ToolbarButton icon={AlignRight} onClick={() => execCommand("justifyRight")} title="Align Right" isActive={activeFormats.alignRight} />
 
         <Separator orientation="vertical" className="h-6 mx-1" />
 
-        <ToolbarButton icon={List} onClick={() => execCommand("insertUnorderedList")} title="Bullet List" />
-        <ToolbarButton icon={ListOrdered} onClick={() => execCommand("insertOrderedList")} title="Numbered List" />
+        <ToolbarButton icon={List} onClick={() => execCommand("insertUnorderedList")} title="Bullet List" isActive={activeFormats.unorderedList} />
+        <ToolbarButton icon={ListOrdered} onClick={() => execCommand("insertOrderedList")} title="Numbered List" isActive={activeFormats.orderedList} />
 
         <Separator orientation="vertical" className="h-6 mx-1" />
 
         <ToolbarButton icon={LinkIcon} onClick={insertLink} title="Insert Link" />
-        <ToolbarButton icon={Code} onClick={() => execCommand("formatBlock", "<pre>")} title="Code Block" />
+        <ToolbarButton icon={Code} onClick={() => execCommand("formatBlock", "<pre>")} title="Code Block" isActive={activeFormats.code} />
 
         <Separator orientation="vertical" className="h-6 mx-1" />
 
@@ -591,11 +751,11 @@ export function RichTextEditor({
           size="sm"
           onMouseDown={(e) => {
             e.preventDefault()
-            insertVariable("{{brand_logo_url}}")
+            insertLogoImage()
           }}
           className="h-8 text-xs font-mono"
         >
-          + logo_url
+          + logo
         </Button>
       </div>
 
@@ -606,8 +766,15 @@ export function RichTextEditor({
           contentEditable
           onInput={handleInput}
           onPaste={handlePaste}
-          onClick={handleEditorClick}
-          onFocus={() => setIsFocused(true)}
+          onClick={(e) => {
+            handleEditorClick(e)
+            updateActiveFormats()
+          }}
+          onKeyUp={updateActiveFormats}
+          onFocus={() => {
+            setIsFocused(true)
+            updateActiveFormats()
+          }}
           onBlur={() => setIsFocused(false)}
           className="min-h-[300px] p-4 pt-6 pb-6 max-w-none focus:outline-none"
           style={{

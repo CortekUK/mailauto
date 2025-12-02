@@ -7,7 +7,7 @@ export default function SubscribersPage() {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-10 max-w-7xl">
         <PageHeader
           title="Subscribers"
-          description="Manage your subscriber list using SheetDB"
+          description="Manage your Subscribers"
           variant="gradient"
         />
         <SubscriberManagerV2 />

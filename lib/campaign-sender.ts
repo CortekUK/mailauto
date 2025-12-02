@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { sendEmail, replaceTemplateVariables } from '@/lib/brevo-client';
+import { sendEmail, replaceTemplateVariables, processHtmlForEmail } from '@/lib/brevo-client';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -148,7 +148,9 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
         };
 
         const personalizedSubject = replaceTemplateVariables(campaign.subject, variables);
-        const personalizedHtml = replaceTemplateVariables(campaign.html, variables);
+        // Replace variables and add inline styles for email compatibility
+        const htmlWithVariables = replaceTemplateVariables(campaign.html, variables);
+        const personalizedHtml = processHtmlForEmail(htmlWithVariables);
         const personalizedText = campaign.text_fallback
           ? replaceTemplateVariables(campaign.text_fallback, variables)
           : undefined;

@@ -216,7 +216,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
       : recipients.filter((r) => {
           if (recipientFilter === "sent") return r.delivery_status === "sent"
           if (recipientFilter === "failed") return r.delivery_status === "failed"
-          if (recipientFilter === "pending") return r.delivery_status === "pending" || r.status === "pending"
+          if (recipientFilter === "pending") return r.delivery_status === "pending" 
           return true
         })
 
@@ -289,10 +289,10 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button variant="outline" size="sm" onClick={handleDuplicate} disabled={actionLoading}>
+            {/* <Button variant="outline" size="sm" onClick={handleDuplicate} disabled={actionLoading}>
               <Copy className="mr-2 h-4 w-4" />
               Duplicate
-            </Button>
+            </Button> */}
             {(campaign.status === "queued" || campaign.status === "draft") && (
               <Button variant="outline" size="sm" onClick={() => setShowCancelDialog(true)} disabled={actionLoading}>
                 <Ban className="mr-2 h-4 w-4" />
@@ -481,7 +481,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                                   : "border-amber-200 bg-amber-50 text-amber-700"
                             }
                           >
-                            {recipient.delivery_status}
+                            {recipient.delivery_status.charAt(0).toUpperCase() + recipient.delivery_status.slice(1)}
                           </Badge>
                           {recipient.error && <div className="mt-1 text-xs text-red-600">{recipient.error}</div>}
                         </TableCell>

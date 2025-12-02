@@ -12,7 +12,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Loader2, UserPlus, Upload, Pencil, Trash2, Search, Users, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { Loader2, UserPlus, Upload, Pencil, Trash2, Search, Users, RefreshCw, Wifi, WifiOff, MoreVertical, Eye, Mail, Phone, Building, MapPin, Tag, Calendar } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { CSVUpload } from '@/components/csv-upload';
 import { createClient } from '@/lib/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -61,6 +67,7 @@ export function SubscriberManagerV2() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [deletingContact, setDeletingContact] = useState<Contact | null>(null);
+  const [viewingContact, setViewingContact] = useState<Contact | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRealtime, setIsRealtime] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -420,104 +427,76 @@ export function SubscriberManagerV2() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead className="hidden md:table-cell">Phone</TableHead>
-                      <TableHead className="hidden lg:table-cell">Company</TableHead>
-                      <TableHead className="hidden lg:table-cell">Location</TableHead>
-                      <TableHead className="hidden lg:table-cell">Source</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="hidden md:table-cell w-32">Phone</TableHead>
+                      <TableHead className="hidden lg:table-cell w-28">Source</TableHead>
+                      <TableHead className="text-right w-16">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredContacts.map((contact) => {
                       const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.name || 'Unknown';
-                      const location = [contact.city, contact.country]
-                        .filter(Boolean)
-                        .join(', ');
+                      const source = (contact.source || 'manual').toLowerCase();
+
+                      const getSourceBadge = () => {
+                        if (source === 'wix-form' || source === 'wix form') {
+                          return <Badge className="text-xs bg-gradient-to-r from-[#5C6BC0] to-[#7C4DFF] text-white border-0">Wix Form</Badge>;
+                        }
+                        if (source === 'wix stores' || source === 'wix-stores' || source === 'wix store') {
+                          return <Badge className="text-xs bg-gradient-to-r from-[#FF6F61] to-[#FF8A65] text-white border-0">Wix Stores</Badge>;
+                        }
+                        if (source === 'form submission' || source === 'form-submission' || source === 'form') {
+                          return <Badge className="text-xs bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-0">Form</Badge>;
+                        }
+                        if (source === 'sheetdb' || source === 'sheet-db' || source === 'sheet db') {
+                          return <Badge className="text-xs bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">Sheet DB</Badge>;
+                        }
+                        if (source === 'manual' || source === 'manual creation' || source === 'manual-creation') {
+                          return <Badge className="text-xs bg-gradient-to-r from-slate-500 to-slate-600 text-white border-0">Manual</Badge>;
+                        }
+                        if (source === 'import' || source === 'csv' || source === 'csv import') {
+                          return <Badge className="text-xs bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">Import</Badge>;
+                        }
+                        return <Badge className="text-xs bg-gradient-to-r from-gray-500 to-gray-600 text-white border-0">{source.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</Badge>;
+                      };
 
                       return (
                         <TableRow key={contact.id}>
-                          <TableCell className="font-medium">{fullName}</TableCell>
-                          <TableCell>{contact.email}</TableCell>
-                          <TableCell className="hidden md:table-cell">{contact.phone || '-'}</TableCell>
-                          <TableCell className="hidden lg:table-cell">{contact.company || '-'}</TableCell>
-                          <TableCell className="hidden lg:table-cell">{location || '-'}</TableCell>
-                          <TableCell className="hidden lg:table-cell">
-                            {(() => {
-                              const source = (contact.source || 'manual').toLowerCase()
-                              // Wix Form
-                              if (source === 'wix-form' || source === 'wix form') {
-                                return (
-                                  <Badge className="text-xs bg-gradient-to-r from-[#5C6BC0] to-[#7C4DFF] text-white border-0">
-                                    Wix Form
-                                  </Badge>
-                                )
-                              }
-                              // Wix Stores
-                              if (source === 'wix stores' || source === 'wix-stores' || source === 'wix store') {
-                                return (
-                                  <Badge className="text-xs bg-gradient-to-r from-[#FF6F61] to-[#FF8A65] text-white border-0">
-                                    Wix Stores
-                                  </Badge>
-                                )
-                              }
-                              // Form Submission
-                              if (source === 'form submission' || source === 'form-submission' || source === 'form') {
-                                return (
-                                  <Badge className="text-xs bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-0">
-                                    Form Submission
-                                  </Badge>
-                                )
-                              }
-                              // Sheet DB
-                              if (source === 'sheetdb' || source === 'sheet-db' || source === 'sheet db') {
-                                return (
-                                  <Badge className="text-xs bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">
-                                    Sheet DB
-                                  </Badge>
-                                )
-                              }
-                              // Manual / Manual Creation
-                              if (source === 'manual' || source === 'manual creation' || source === 'manual-creation') {
-                                return (
-                                  <Badge className="text-xs bg-gradient-to-r from-slate-500 to-slate-600 text-white border-0">
-                                    Manual
-                                  </Badge>
-                                )
-                              }
-                              // Import
-                              if (source === 'import' || source === 'csv' || source === 'csv import') {
-                                return (
-                                  <Badge className="text-xs bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
-                                    Import
-                                  </Badge>
-                                )
-                              }
-                              // Default - format nicely
-                              return (
-                                <Badge className="text-xs bg-gradient-to-r from-gray-500 to-gray-600 text-white border-0">
-                                  {source.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                                </Badge>
-                              )
-                            })()}
+                          <TableCell className="max-w-[230px] truncate">
+                            <button
+                              onClick={() => setViewingContact(contact)}
+                              className="font-medium text-primary hover:underline cursor-pointer text-left"
+                            >
+                              {fullName}
+                            </button>
                           </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleEditClick(contact)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDeleteClick(contact)}
-                                className="text-destructive hover:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                          <TableCell className="max-w-[300px] truncate">{contact.email}</TableCell>
+                          <TableCell className="hidden md:table-cell w-44">{contact.phone || '-'}</TableCell>
+                          <TableCell className="hidden lg:table-cell w-32">{getSourceBadge()}</TableCell>
+                          <TableCell className="text-right w-16">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setViewingContact(contact)}>
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  View Details
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleEditClick(contact)}>
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleDeleteClick(contact)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       );
@@ -859,6 +838,134 @@ export function SubscriberManagerV2() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Details Dialog */}
+      <Dialog open={!!viewingContact} onOpenChange={(open) => !open && setViewingContact(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Subscriber Details</DialogTitle>
+          </DialogHeader>
+
+          {viewingContact && (() => {
+            const fullName = `${viewingContact.first_name || ''} ${viewingContact.last_name || ''}`.trim() || viewingContact.name || 'Unknown';
+            const location = [viewingContact.city, viewingContact.state, viewingContact.country].filter(Boolean).join(', ');
+            const source = (viewingContact.source || 'manual').toLowerCase();
+
+            const getSourceBadge = () => {
+              if (source === 'wix-form' || source === 'wix form') {
+                return <Badge className="text-xs bg-gradient-to-r from-[#5C6BC0] to-[#7C4DFF] text-white border-0">Wix Form</Badge>;
+              }
+              if (source === 'wix stores' || source === 'wix-stores' || source === 'wix store') {
+                return <Badge className="text-xs bg-gradient-to-r from-[#FF6F61] to-[#FF8A65] text-white border-0">Wix Stores</Badge>;
+              }
+              if (source === 'form submission' || source === 'form-submission' || source === 'form') {
+                return <Badge className="text-xs bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-0">Form Submission</Badge>;
+              }
+              if (source === 'sheetdb' || source === 'sheet-db' || source === 'sheet db') {
+                return <Badge className="text-xs bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">Sheet DB</Badge>;
+              }
+              if (source === 'manual' || source === 'manual creation' || source === 'manual-creation') {
+                return <Badge className="text-xs bg-gradient-to-r from-slate-500 to-slate-600 text-white border-0">Manual</Badge>;
+              }
+              if (source === 'import' || source === 'csv' || source === 'csv import') {
+                return <Badge className="text-xs bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">Import</Badge>;
+              }
+              return <Badge className="text-xs bg-gradient-to-r from-gray-500 to-gray-600 text-white border-0">{source.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</Badge>;
+            };
+
+            return (
+              <div className="space-y-4">
+                {/* Name Header */}
+                <div className="flex items-center gap-3 pb-4 border-b">
+                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <span className="text-lg font-semibold text-primary">
+                      {fullName.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">{fullName}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      {getSourceBadge()}
+                      <Badge variant="outline" className="text-xs">
+                        {viewingContact.status || 'active'}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Info */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">{viewingContact.email}</span>
+                  </div>
+
+                  {viewingContact.phone && (
+                    <div className="flex items-center gap-3">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">{viewingContact.phone}</span>
+                    </div>
+                  )}
+
+                  {viewingContact.company && (
+                    <div className="flex items-center gap-3">
+                      <Building className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">{viewingContact.company}</span>
+                    </div>
+                  )}
+
+                  {location && (
+                    <div className="flex items-center gap-3">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">{location}</span>
+                    </div>
+                  )}
+
+                  {viewingContact.labels && (
+                    <div className="flex items-center gap-3">
+                      <Tag className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">{viewingContact.labels}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      Added {new Date(viewingContact.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setViewingContact(null);
+                      handleEditClick(viewingContact);
+                    }}
+                  >
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 text-destructive hover:text-destructive"
+                    onClick={() => {
+                      setViewingContact(null);
+                      handleDeleteClick(viewingContact);
+                    }}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

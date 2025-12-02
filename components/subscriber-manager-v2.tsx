@@ -461,9 +461,34 @@ export function SubscriberManagerV2() {
                           <TableCell className="hidden lg:table-cell">{contact.company || '-'}</TableCell>
                           <TableCell className="hidden lg:table-cell">{location || '-'}</TableCell>
                           <TableCell className="hidden lg:table-cell">
-                            <Badge variant="secondary" className="text-xs">
-                              {contact.source || 'manual'}
-                            </Badge>
+                            {(() => {
+                              const source = (contact.source || 'manual').toLowerCase()
+                              if (source === 'wix-form' || source === 'wix') {
+                                return (
+                                  <Badge className="text-xs bg-gradient-to-r from-[#5C6BC0] to-[#7C4DFF] text-white border-0">
+                                    Wix Form
+                                  </Badge>
+                                )
+                              } else if (source === 'sheetdb' || source === 'sheet-db') {
+                                return (
+                                  <Badge className="text-xs bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">
+                                    Sheet DB
+                                  </Badge>
+                                )
+                              } else if (source === 'manual') {
+                                return (
+                                  <Badge className="text-xs bg-gradient-to-r from-slate-500 to-slate-600 text-white border-0">
+                                    Manual
+                                  </Badge>
+                                )
+                              } else {
+                                return (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {source.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                  </Badge>
+                                )
+                              }
+                            })()}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">

@@ -38,7 +38,10 @@ import {
   Mail,
   Shield,
   Settings2,
+  Upload,
+  X,
 } from "lucide-react"
+import { Slider } from "@/components/ui/slider"
 import { Badge } from "@/components/ui/badge"
 import { PageHeader } from "@/components/page-header"
 
@@ -70,6 +73,15 @@ export function SettingsManager() {
   const [webhookUrl] = useState(
     `${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/email-events`,
   )
+
+  // Logo upload state
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [showLogoUpload, setShowLogoUpload] = useState(false)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoSize, setLogoSize] = useState({ width: 200, height: 0 }) // height 0 = auto
+  const [maintainAspectRatio, setMaintainAspectRatio] = useState(true)
+  const [originalDimensions, setOriginalDimensions] = useState({ width: 0, height: 0 })
 
   useEffect(() => {
     loadData()
@@ -168,6 +180,112 @@ export function SettingsManager() {
       title: "Signing secret rotated",
       description: "Update your webhook configuration with the new secret.",
     })
+  }
+
+  function handleLogoFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+      toast({
+        variant: "destructive",
+        title: "Invalid file type",
+        description: "Please upload a JPEG, PNG, GIF, or WebP image.",
+      })
+      return
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        variant: "destructive",
+        title: "File too large",
+        description: "Please upload an image smaller than 5MB.",
+      })
+      return
+    }
+
+    setLogoFile(file)
+
+    // Create preview and get dimensions
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string
+      setLogoPreview(dataUrl)
+
+      // Get original dimensions
+      const img = new Image()
+      img.onload = () => {
+        setOriginalDimensions({ width: img.width, height: img.height })
+        // Set initial size (max 400px width, maintain aspect ratio)
+        const initialWidth = Math.min(img.width, 400)
+        setLogoSize({ width: initialWidth, height: 0 })
+      }
+      img.src = dataUrl
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function handleLogoUpload() {
+    if (!logoFile) return
+
+    setUploadingLogo(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', logoFile)
+      if (logoSize.width > 0) {
+        formData.append('width', logoSize.width.toString())
+      }
+      if (logoSize.height > 0 && !maintainAspectRatio) {
+        formData.append('height', logoSize.height.toString())
+      }
+
+      const response = await fetch('/api/images/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || 'Failed to upload image')
+      }
+
+      const result = await response.json()
+
+      // Update settings with the new logo URL
+      setSettings({ ...settings, brand_logo_url: result.url })
+
+      // Reset upload state
+      setShowLogoUpload(false)
+      setLogoFile(null)
+      setLogoPreview(null)
+
+      toast({
+        title: "Logo uploaded",
+        description: "Your brand logo has been uploaded. Don't forget to save settings.",
+      })
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: error.message,
+      })
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  function handleCancelLogoUpload() {
+    setShowLogoUpload(false)
+    setLogoFile(null)
+    setLogoPreview(null)
+    setLogoSize({ width: 200, height: 0 })
+  }
+
+  function calculateHeight(width: number): number {
+    if (originalDimensions.width === 0) return 0
+    return Math.round((width / originalDimensions.width) * originalDimensions.height)
   }
 
   if (loading) {
@@ -427,14 +545,142 @@ export function SettingsManager() {
                   <Label htmlFor="logo-url" className="text-sm font-medium">
                     Brand Logo URL
                   </Label>
-                  <Input
-                    id="logo-url"
-                    placeholder="https://example.com/logo.png"
-                    value={settings.brand_logo_url}
-                    onChange={(e) => setSettings({ ...settings, brand_logo_url: e.target.value })}
-                    className="h-11"
-                  />
-                  {settings.brand_logo_url && (
+                  <div className="flex gap-2">
+                    <Input
+                      id="logo-url"
+                      placeholder="https://example.com/logo.png"
+                      value={settings.brand_logo_url}
+                      onChange={(e) => setSettings({ ...settings, brand_logo_url: e.target.value })}
+                      className="h-11"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowLogoUpload(true)}
+                      className="h-11 px-4 flex-shrink-0"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload
+                    </Button>
+                  </div>
+
+                  {/* Logo Upload Modal */}
+                  {showLogoUpload && (
+                    <div className="rounded-lg border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-background p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold">Upload Brand Logo</p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={handleCancelLogoUpload}
+                          className="h-8 w-8"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      {!logoPreview ? (
+                        <label className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/30 p-8 cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors">
+                          <Upload className="h-10 w-10 text-muted-foreground mb-3" />
+                          <p className="text-sm font-medium text-muted-foreground">Click to select an image</p>
+                          <p className="text-xs text-muted-foreground/70 mt-1">JPEG, PNG, GIF, or WebP (max 5MB)</p>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/gif,image/webp"
+                            onChange={handleLogoFileSelect}
+                            className="hidden"
+                          />
+                        </label>
+                      ) : (
+                        <div className="space-y-4">
+                          {/* Preview */}
+                          <div className="rounded-lg bg-white border p-4 flex items-center justify-center">
+                            <img
+                              src={logoPreview}
+                              alt="Logo preview"
+                              style={{
+                                width: logoSize.width,
+                                height: maintainAspectRatio ? 'auto' : logoSize.height || 'auto',
+                              }}
+                              className="object-contain max-w-full"
+                            />
+                          </div>
+
+                          {/* Resize Controls */}
+                          <div className="space-y-4 p-4 rounded-lg bg-muted/30 border">
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm font-medium">Resize Image</p>
+                              <p className="text-xs text-muted-foreground">
+                                Original: {originalDimensions.width} × {originalDimensions.height}px
+                              </p>
+                            </div>
+
+                            {/* Width Slider */}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs">Width</Label>
+                                <span className="text-xs font-mono text-muted-foreground">
+                                  {logoSize.width}px
+                                </span>
+                              </div>
+                              <Slider
+                                value={[logoSize.width]}
+                                onValueChange={([value]) => setLogoSize({ ...logoSize, width: value })}
+                                min={50}
+                                max={Math.min(originalDimensions.width, 800)}
+                                step={10}
+                                className="w-full"
+                              />
+                            </div>
+
+                            {/* Calculated Height Display */}
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Output size:</span>
+                              <span className="font-mono">
+                                {logoSize.width} × {calculateHeight(logoSize.width)}px
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                setLogoFile(null)
+                                setLogoPreview(null)
+                              }}
+                              className="flex-1"
+                            >
+                              Choose Different
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={handleLogoUpload}
+                              disabled={uploadingLogo}
+                              className="flex-1"
+                            >
+                              {uploadingLogo ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Uploading...
+                                </>
+                              ) : (
+                                <>
+                                  <Upload className="h-4 w-4 mr-2" />
+                                  Upload Logo
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {settings.brand_logo_url && !showLogoUpload && (
                     <div className="rounded-lg border-2 bg-gradient-to-br from-muted/30 to-background dark:from-muted/50 dark:to-background p-5">
                       <p className="mb-3 text-xs font-semibold text-muted-foreground dark:text-muted-foreground/80 uppercase tracking-wide">
                         Logo Preview

@@ -253,8 +253,12 @@ export function SettingsManager() {
 
       const result = await response.json()
 
-      // Update settings with the new logo URL
-      setSettings({ ...settings, brand_logo_url: result.url })
+      // Update settings with the new logo URL and save immediately
+      const updatedSettings = { ...settings, brand_logo_url: result.url }
+      setSettings(updatedSettings)
+
+      // Auto-save to database
+      await updateSettings(updatedSettings)
 
       // Reset upload state
       setShowLogoUpload(false)
@@ -262,8 +266,8 @@ export function SettingsManager() {
       setLogoPreview(null)
 
       toast({
-        title: "Logo uploaded",
-        description: "Your brand logo has been uploaded. Don't forget to save settings.",
+        title: "Logo uploaded and saved",
+        description: "Your brand logo has been uploaded and saved successfully.",
       })
     } catch (error: any) {
       toast({

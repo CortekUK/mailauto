@@ -169,6 +169,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check for duplicate email before adding to SheetDB
+    const email = (data['Email 1'] || '').toLowerCase().trim();
+    if (email) {
+      const { data: existingContact } = await supabaseAdmin
+        .from('contacts')
+        .select('id')
+        .eq('email', email)
+        .single();
+
+      if (existingContact) {
+        console.log(`⏭️ Email ${email} already exists, skipping SheetDB creation`);
+        // Still sync to Supabase (update existing)
+        await syncContactToSupabase(data);
+        return NextResponse.json({
+          success: true,
+          data: { message: 'Contact already exists, updated instead' },
+          duplicate: true
+        }, { status: 200 });
+      }
+    }
+
     console.log('Calling sheetDBService.create with:', { data, sheet });
     const result = await sheetDBService.create(data, { sheet });
     console.log('POST result:', result);

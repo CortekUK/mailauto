@@ -87,30 +87,44 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    console.log(`✅ Extracted contact: ${firstName} ${lastName} <${email}>`);
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`✅ Extracted contact: ${firstName} ${lastName} <${normalizedEmail}>`);
 
-    // Step 1: Add to SheetDB (Google Sheet)
-    const sheetDBData = {
-      'First Name': firstName,
-      'Last Name': lastName,
-      'Email 1': email.toLowerCase().trim(),
-      'Phone 1': phone,
-      'Company': company,
-      'Address 1 - City': city,
-      'Address 1 - State/Region': state,
-      'Address 1 - Country': country,
-      'Email subscriber status': 'subscribed',
-      'Source': 'wix-form',
-      'Created At (UTC+0)': new Date().toISOString(),
-    };
+    // Step 1: Check if contact already exists (check Supabase first - single source of truth)
+    const { data: existing } = await supabaseAdmin
+      .from('contacts')
+      .select('id')
+      .eq('email', normalizedEmail)
+      .single();
 
-    console.log('📤 Adding to SheetDB...');
-    const sheetDBResult = await sheetDBService.create(sheetDBData);
-    console.log('✅ SheetDB result:', sheetDBResult);
+    const isNewContact = !existing;
 
-    // Step 2: Add/Update in Supabase for immediate consistency
+    // Step 2: Only add to SheetDB if it's a NEW contact (prevent duplicates)
+    if (isNewContact) {
+      const sheetDBData = {
+        'First Name': firstName,
+        'Last Name': lastName,
+        'Email 1': normalizedEmail,
+        'Phone 1': phone,
+        'Company': company,
+        'Address 1 - City': city,
+        'Address 1 - State/Region': state,
+        'Address 1 - Country': country,
+        'Email subscriber status': 'subscribed',
+        'Source': 'wix-form',
+        'Created At (UTC+0)': new Date().toISOString(),
+      };
+
+      console.log('📤 Adding NEW contact to SheetDB...');
+      const sheetDBResult = await sheetDBService.create(sheetDBData);
+      console.log('✅ SheetDB result:', sheetDBResult);
+    } else {
+      console.log('⏭️ Contact already exists, skipping SheetDB (no duplicate)');
+    }
+
+    // Step 3: Add/Update in Supabase
     const supabaseContact = {
-      email: email.toLowerCase().trim(),
+      email: normalizedEmail,
       name: `${firstName} ${lastName}`.trim() || null,
       first_name: firstName || null,
       last_name: lastName || null,
@@ -119,30 +133,22 @@ export async function POST(request: NextRequest) {
       city: city || null,
       state: state || null,
       country: country || null,
-      notes: message || null, // Store form message in notes field
+      notes: message || null,
       status: 'active',
       source: 'wix-form',
       tags: [],
     };
 
-    console.log('📤 Upserting to Supabase...');
-
-    // Check if contact exists
-    const { data: existing } = await supabaseAdmin
-      .from('contacts')
-      .select('id')
-      .eq('email', supabaseContact.email)
-      .single();
-
     if (existing) {
-      // Update existing contact
+      // Update existing contact in Supabase
+      console.log('📤 Updating existing contact in Supabase...');
       const { error } = await supabaseAdmin
         .from('contacts')
         .update({
           ...supabaseContact,
           updated_at: new Date().toISOString()
         })
-        .eq('email', supabaseContact.email);
+        .eq('email', normalizedEmail);
 
       if (error) {
         console.error('❌ Supabase update error:', error);
@@ -150,7 +156,8 @@ export async function POST(request: NextRequest) {
         console.log('✅ Contact updated in Supabase');
       }
     } else {
-      // Insert new contact
+      // Insert new contact in Supabase
+      console.log('📤 Inserting new contact in Supabase...');
       const { error } = await supabaseAdmin
         .from('contacts')
         .insert(supabaseContact);

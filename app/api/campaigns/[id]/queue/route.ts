@@ -38,59 +38,72 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     console.log("📧 Campaign audience_type:", campaign.audience_type)
 
     if (campaign.audience_id) {
-      // Get audience with contact_emails
-      const { data: audience, error: audienceError } = await supabase
+      // Get audience with contact_emails (which may contain IDs or emails)
+      const { data: audience } = await supabase
         .from("audiences")
         .select("*")
         .eq("id", campaign.audience_id)
         .single()
 
-      console.log("📧 Audience data:", JSON.stringify(audience, null, 2))
-      console.log("📧 Audience error:", audienceError)
-
-      if (audience?.contact_emails) {
-        // Parse contact_emails (stored as JSON array of emails)
-        const contactEmails = typeof audience.contact_emails === 'string'
+      if (audience?.contact_emails && audience.contact_emails.length > 0) {
+        // Parse contact_emails
+        const contactIdentifiers = typeof audience.contact_emails === 'string'
           ? JSON.parse(audience.contact_emails)
           : audience.contact_emails
 
-        console.log("📧 Contact emails from audience:", contactEmails?.length, "emails")
-        console.log("📧 First few emails:", contactEmails?.slice(0, 3))
+        // Check if identifiers are UUIDs (contact IDs) or emails
+        const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)
+        const firstItem = contactIdentifiers[0]
+        const areContactIds = isUUID(firstItem)
 
-        // Filter to only those emails in the audience
-        const emailSet = new Set(contactEmails.map((e: string) => e.toLowerCase()))
+        if (areContactIds) {
+          // Fetch contacts by IDs
+          const { data: contacts } = await supabase
+            .from('contacts')
+            .select('*')
+            .in('id', contactIdentifiers)
+            .eq('status', 'active')
 
-        // Fetch contacts from Supabase (don't filter by status - use audience emails directly)
-        const { data: contacts, error: contactsError } = await supabase
-          .from('contacts')
-          .select('*')
+          recipients = (contacts || [])
+            .filter((contact: any) => contact.email)
+            .map((contact: any) => ({
+              id: contact.id,
+              email: contact.email,
+              name: contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || null,
+              first_name: contact.first_name,
+              last_name: contact.last_name,
+              company: contact.company,
+              city: contact.city,
+              state: contact.state,
+              country: contact.country,
+            }))
+        } else {
+          // Legacy: identifiers are emails
+          const emailSet = new Set(contactIdentifiers.map((e: string) => e.toLowerCase()))
 
-        console.log("📧 Total contacts in Supabase:", contacts?.length)
-        console.log("📧 Contacts error:", contactsError)
-        console.log("📧 First contact sample:", contacts?.[0])
+          // Fetch contacts from Supabase
+          const { data: contacts } = await supabase
+            .from('contacts')
+            .select('*')
+            .eq('status', 'active')
 
-        recipients = (contacts || [])
-          .filter((contact: any) => {
-            const email = contact.email?.toLowerCase()
-            // Include contact if email is in audience and status is not 'unsubscribed'
-            const isInAudience = email && emailSet.has(email)
-            const isNotUnsubscribed = contact.status !== 'unsubscribed'
-            if (email && isInAudience) {
-              console.log(`📧 Contact ${email} - inAudience: ${isInAudience}, status: ${contact.status}`)
-            }
-            return isInAudience && isNotUnsubscribed
-          })
-          .map((contact: any) => ({
-            id: contact.id,
-            email: contact.email,
-            name: contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || null,
-            first_name: contact.first_name,
-            last_name: contact.last_name,
-            company: contact.company,
-            city: contact.city,
-            state: contact.state,
-            country: contact.country,
-          }))
+          recipients = (contacts || [])
+            .filter((contact: any) => {
+              const email = contact.email?.toLowerCase()
+              return email && emailSet.has(email)
+            })
+            .map((contact: any) => ({
+              id: contact.id,
+              email: contact.email,
+              name: contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || null,
+              first_name: contact.first_name,
+              last_name: contact.last_name,
+              company: contact.company,
+              city: contact.city,
+              state: contact.state,
+              country: contact.country,
+            }))
+        }
       }
     } else if (campaign.audience_type === "all_subscribers" || campaign.audience_type === "all") {
       // Get all subscribers from Supabase (exclude unsubscribed)

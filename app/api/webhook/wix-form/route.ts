@@ -97,32 +97,36 @@ export async function POST(request: NextRequest) {
       .eq('email', normalizedEmail)
       .single();
 
-    const isNewContact = !existing;
-
-    // Step 2: Only add to SheetDB if it's a NEW contact (prevent duplicates)
-    if (isNewContact) {
-      const sheetDBData = {
-        'First Name': firstName,
-        'Last Name': lastName,
-        'Email 1': normalizedEmail,
-        'Phone 1': phone,
-        'Company': company,
-        'Address 1 - City': city,
-        'Address 1 - State/Region': state,
-        'Address 1 - Country': country,
-        'Email subscriber status': 'subscribed',
-        'Source': 'wix-form',
-        'Created At (UTC+0)': new Date().toISOString(),
-      };
-
-      console.log('📤 Adding NEW contact to SheetDB...');
-      const sheetDBResult = await sheetDBService.create(sheetDBData);
-      console.log('✅ SheetDB result:', sheetDBResult);
-    } else {
-      console.log('⏭️ Contact already exists, skipping SheetDB (no duplicate)');
+    // If contact already exists, reject the submission (no duplicates allowed)
+    if (existing) {
+      console.log(`⏭️ Email ${normalizedEmail} already exists, rejecting submission`);
+      return NextResponse.json({
+        success: false,
+        error: 'This email is already subscribed',
+        duplicate: true
+      }, { status: 409 }); // 409 Conflict
     }
 
-    // Step 3: Add/Update in Supabase
+    // New contact - add to SheetDB
+    const sheetDBData = {
+      'First Name': firstName,
+      'Last Name': lastName,
+      'Email 1': normalizedEmail,
+      'Phone 1': phone,
+      'Company': company,
+      'Address 1 - City': city,
+      'Address 1 - State/Region': state,
+      'Address 1 - Country': country,
+      'Email subscriber status': 'subscribed',
+      'Source': 'wix-form',
+      'Created At (UTC+0)': new Date().toISOString(),
+    };
+
+    console.log('📤 Adding NEW contact to SheetDB...');
+    const sheetDBResult = await sheetDBService.create(sheetDBData);
+    console.log('✅ SheetDB result:', sheetDBResult);
+
+    // Add to Supabase
     const supabaseContact = {
       email: normalizedEmail,
       name: `${firstName} ${lastName}`.trim() || null,
@@ -139,34 +143,15 @@ export async function POST(request: NextRequest) {
       tags: [],
     };
 
-    if (existing) {
-      // Update existing contact in Supabase
-      console.log('📤 Updating existing contact in Supabase...');
-      const { error } = await supabaseAdmin
-        .from('contacts')
-        .update({
-          ...supabaseContact,
-          updated_at: new Date().toISOString()
-        })
-        .eq('email', normalizedEmail);
+    console.log('📤 Inserting new contact in Supabase...');
+    const { error } = await supabaseAdmin
+      .from('contacts')
+      .insert(supabaseContact);
 
-      if (error) {
-        console.error('❌ Supabase update error:', error);
-      } else {
-        console.log('✅ Contact updated in Supabase');
-      }
+    if (error) {
+      console.error('❌ Supabase insert error:', error);
     } else {
-      // Insert new contact in Supabase
-      console.log('📤 Inserting new contact in Supabase...');
-      const { error } = await supabaseAdmin
-        .from('contacts')
-        .insert(supabaseContact);
-
-      if (error) {
-        console.error('❌ Supabase insert error:', error);
-      } else {
-        console.log('✅ Contact inserted in Supabase');
-      }
+      console.log('✅ Contact inserted in Supabase');
     }
 
     // Step 3: Update audience count
@@ -194,8 +179,8 @@ export async function POST(request: NextRequest) {
       status: 'success',
       total_records: 1,
       synced_records: 1,
-      new_records: existing ? 0 : 1,
-      updated_records: existing ? 1 : 0,
+      new_records: 1,
+      updated_records: 0,
       started_at: new Date().toISOString(),
       completed_at: new Date().toISOString()
     });

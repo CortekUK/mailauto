@@ -179,14 +179,12 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (existingContact) {
-        console.log(`⏭️ Email ${email} already exists, skipping SheetDB creation`);
-        // Still sync to Supabase (update existing)
-        await syncContactToSupabase(data);
+        console.log(`⏭️ Email ${email} already exists, rejecting submission`);
         return NextResponse.json({
-          success: true,
-          data: { message: 'Contact already exists, updated instead' },
+          success: false,
+          error: 'This email is already subscribed',
           duplicate: true
-        }, { status: 200 });
+        }, { status: 409 }); // 409 Conflict
       }
     }
 

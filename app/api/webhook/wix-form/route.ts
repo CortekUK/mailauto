@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sheetDBService } from '@/lib/sheetdb/client';
 
 // Initialize Supabase client with service role key for admin access
 const supabaseAdmin = createClient(
@@ -16,7 +15,6 @@ const supabaseAdmin = createClient(
 
 // Map Wix form fields to our schema
 interface WixFormData {
-  // Common Wix form field names (adjust based on your actual Wix form)
   firstName?: string;
   first_name?: string;
   'First Name'?: string;
@@ -37,7 +35,6 @@ interface WixFormData {
   State?: string;
   country?: string;
   Country?: string;
-  // Allow any other fields
   [key: string]: string | undefined;
 }
 
@@ -48,6 +45,31 @@ function extractField(data: WixFormData, ...keys: string[]): string {
   return '';
 }
 
+// Helper function to update audience count
+async function updateAudienceCount() {
+  try {
+    const { data: allSubsAudience } = await supabaseAdmin
+      .from('audiences')
+      .select('id')
+      .eq('type', 'all_subscribers')
+      .single();
+
+    if (allSubsAudience) {
+      const { count } = await supabaseAdmin
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active');
+
+      await supabaseAdmin
+        .from('audiences')
+        .update({ contact_count: count || 0 })
+        .eq('id', allSubsAudience.id);
+    }
+  } catch (error) {
+    console.error('Error updating audience count:', error);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     console.log('📥 Received Wix form webhook');
@@ -56,11 +78,9 @@ export async function POST(request: NextRequest) {
     console.log('📝 Webhook payload:', JSON.stringify(body, null, 2));
 
     // Handle various Wix webhook formats
-    // Wix sends: { submission: {...}, submissions: { field_name: value, ... } }
     const formData: WixFormData = body.submissions || body.data || body.formData || body;
 
     // Extract fields with multiple possible field name formats
-    // Handle "Full Name" field - split into first/last if provided
     const fullName = extractField(formData, 'fullName', 'full_name', 'Full Name', 'full-name', 'FullName', 'name', 'Name');
     let firstName = extractField(formData, 'firstName', 'first_name', 'First Name', 'first-name', 'FirstName');
     let lastName = extractField(formData, 'lastName', 'last_name', 'Last Name', 'last-name', 'LastName');
@@ -71,6 +91,7 @@ export async function POST(request: NextRequest) {
       firstName = nameParts[0] || '';
       lastName = nameParts.slice(1).join(' ') || '';
     }
+
     const email = extractField(formData, 'email', 'Email', 'Email 1', 'email-address', 'emailAddress');
     const phone = extractField(formData, 'phone', 'Phone', 'Phone 1', 'phone-number', 'phoneNumber', 'phone_number_1', 'Phone Number');
     const company = extractField(formData, 'company', 'Company', 'company-name', 'companyName');
@@ -90,7 +111,7 @@ export async function POST(request: NextRequest) {
     const normalizedEmail = email.toLowerCase().trim();
     console.log(`✅ Extracted contact: ${firstName} ${lastName} <${normalizedEmail}>`);
 
-    // Step 1: Check if contact already exists (check Supabase first - single source of truth)
+    // Check if contact already exists
     const { data: existing } = await supabaseAdmin
       .from('contacts')
       .select('id')
@@ -104,30 +125,11 @@ export async function POST(request: NextRequest) {
         success: false,
         error: 'This email is already subscribed',
         duplicate: true
-      }, { status: 409 }); // 409 Conflict
+      }, { status: 409 });
     }
 
-    // New contact - add to SheetDB
-    const sheetDBData = {
-      'First Name': firstName,
-      'Last Name': lastName,
-      'Email 1': normalizedEmail,
-      'Phone 1': phone,
-      'Company': company,
-      'Address 1 - City': city,
-      'Address 1 - State/Region': state,
-      'Address 1 - Country': country,
-      'Email subscriber status': 'subscribed',
-      'Source': 'wix-form',
-      'Created At (UTC+0)': new Date().toISOString(),
-    };
-
-    console.log('📤 Adding NEW contact to SheetDB...');
-    const sheetDBResult = await sheetDBService.create(sheetDBData);
-    console.log('✅ SheetDB result:', sheetDBResult);
-
-    // Add to Supabase
-    const supabaseContact = {
+    // Insert new contact into Supabase
+    const contact = {
       email: normalizedEmail,
       name: `${firstName} ${lastName}`.trim() || null,
       first_name: firstName || null,
@@ -146,32 +148,17 @@ export async function POST(request: NextRequest) {
     console.log('📤 Inserting new contact in Supabase...');
     const { error } = await supabaseAdmin
       .from('contacts')
-      .insert(supabaseContact);
+      .insert(contact);
 
     if (error) {
       console.error('❌ Supabase insert error:', error);
-    } else {
-      console.log('✅ Contact inserted in Supabase');
+      throw error;
     }
 
-    // Step 3: Update audience count
-    const { data: allSubsAudience } = await supabaseAdmin
-      .from('audiences')
-      .select('id')
-      .eq('type', 'sheetdb')
-      .single();
+    console.log('✅ Contact inserted in Supabase');
 
-    if (allSubsAudience) {
-      const { count } = await supabaseAdmin
-        .from('contacts')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'active');
-
-      await supabaseAdmin
-        .from('audiences')
-        .update({ contact_count: count || 0 })
-        .eq('id', allSubsAudience.id);
-    }
+    // Update audience count
+    await updateAudienceCount();
 
     // Log the webhook event
     await supabaseAdmin.from('sync_log').insert({
@@ -189,8 +176,8 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Contact added successfully',
       contact: {
-        email: supabaseContact.email,
-        name: supabaseContact.name
+        email: contact.email,
+        name: contact.name
       }
     });
 
@@ -204,7 +191,7 @@ export async function POST(request: NextRequest) {
       error_message: error.message,
       started_at: new Date().toISOString(),
       completed_at: new Date().toISOString()
-    }).catch(() => {}); // Don't fail if logging fails
+    }).catch(() => {});
 
     return NextResponse.json({
       success: false,

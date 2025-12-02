@@ -51,19 +51,6 @@ interface Contact {
   updated_at: string;
 }
 
-// SheetDB format interface (for API calls)
-interface Subscriber {
-  'First Name': string;
-  'Last Name': string;
-  'Email 1': string;
-  'Phone 1'?: string;
-  'Company'?: string;
-  'Address 1 - City'?: string;
-  'Address 1 - State/Region'?: string;
-  'Address 1 - Country'?: string;
-  'Labels'?: string;
-  'Email subscriber status'?: string;
-}
 
 export function SubscriberManagerV2() {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -179,26 +166,22 @@ export function SubscriberManagerV2() {
         return;
       }
 
-      // Write to SheetDB (which will also sync to Supabase)
-      const response = await fetch('/api/sheetdb', {
+      // Create contact in Supabase
+      const response = await fetch('/api/contacts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          data: {
-            'First Name': data.firstName,
-            'Last Name': data.lastName || '',
-            'Email 1': data.email,
-            'Phone 1': data.phone || '',
-            'Company': data.company || '',
-            'Address 1 - City': data.city || '',
-            'Address 1 - State/Region': data.state || '',
-            'Address 1 - Country': data.country || '',
-            'Labels': data.labels || '',
-            'Email subscriber status': 'subscribed',
-            'Created At (UTC+0)': new Date().toISOString(),
-          },
+          firstName: data.firstName,
+          lastName: data.lastName || '',
+          email: data.email,
+          phone: data.phone || '',
+          company: data.company || '',
+          city: data.city || '',
+          state: data.state || '',
+          country: data.country || '',
+          labels: data.labels || '',
         }),
       });
 
@@ -240,26 +223,24 @@ export function SubscriberManagerV2() {
     setIsSubmitting(true);
 
     try {
-      // Update in SheetDB (which will also sync to Supabase)
-      const response = await fetch('/api/sheetdb', {
+      // Update contact in Supabase
+      const response = await fetch('/api/contacts', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          columnName: 'Email 1',
-          columnValue: editingContact.email,
-          data: {
-            'First Name': data.firstName,
-            'Last Name': data.lastName || '',
-            'Email 1': data.email,
-            'Phone 1': data.phone || '',
-            'Company': data.company || '',
-            'Address 1 - City': data.city || '',
-            'Address 1 - State/Region': data.state || '',
-            'Address 1 - Country': data.country || '',
-            'Labels': data.labels || '',
-          },
+          id: editingContact.id,
+          oldEmail: editingContact.email,
+          firstName: data.firstName,
+          lastName: data.lastName || '',
+          email: data.email,
+          phone: data.phone || '',
+          company: data.company || '',
+          city: data.city || '',
+          state: data.state || '',
+          country: data.country || '',
+          labels: data.labels || '',
         }),
       });
 
@@ -292,15 +273,15 @@ export function SubscriberManagerV2() {
     setIsDeleting(true);
 
     try {
-      // Delete from SheetDB (which will also delete from Supabase)
-      const response = await fetch('/api/sheetdb', {
+      // Delete contact from Supabase
+      const response = await fetch('/api/contacts', {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          columnName: 'Email 1',
-          columnValue: deletingContact.email,
+          id: deletingContact.id,
+          email: deletingContact.email,
         }),
       });
 
@@ -692,10 +673,7 @@ export function SubscriberManagerV2() {
           <CSVUpload
             onUploadComplete={() => {
               setIsBulkDialogOpen(false);
-              // Trigger a full sync after bulk upload
-              fetch('/api/sync/sheetdb-to-supabase', { method: 'POST' })
-                .then(() => fetchContacts(false))
-                .catch(console.error);
+              fetchContacts(false);
             }}
           />
         </DialogContent>

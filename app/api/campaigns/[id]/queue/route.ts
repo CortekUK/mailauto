@@ -1,6 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
-import { sheetDBService } from "@/lib/sheetdb/client"
 import { sendCampaignEmails } from "@/lib/campaign-sender"
 
 // Use admin client to bypass RLS
@@ -48,45 +47,51 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           ? JSON.parse(audience.contact_emails)
           : audience.contact_emails
 
-        // Fetch all subscribers from SheetDB
-        const sheetData = await sheetDBService.read()
-
         // Filter to only those emails in the audience
         const emailSet = new Set(contactEmails.map((e: string) => e.toLowerCase()))
 
-        recipients = (sheetData || [])
-          .filter((row: any) => {
-            const email = row['Email 1']?.toLowerCase()
+        // Fetch contacts from Supabase
+        const { data: contacts } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('status', 'active')
+
+        recipients = (contacts || [])
+          .filter((contact: any) => {
+            const email = contact.email?.toLowerCase()
             return email && emailSet.has(email)
           })
-          .map((row: any) => ({
-            id: row['Email 1'], // Use email as ID
-            email: row['Email 1'],
-            name: `${row['First Name'] || ''} ${row['Last Name'] || ''}`.trim() || null,
-            first_name: row['First Name'],
-            last_name: row['Last Name'],
-            company: row['Company'],
-            city: row['Address 1 - City'],
-            state: row['Address 1 - State/Region'],
-            country: row['Address 1 - Country'],
+          .map((contact: any) => ({
+            id: contact.id,
+            email: contact.email,
+            name: contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || null,
+            first_name: contact.first_name,
+            last_name: contact.last_name,
+            company: contact.company,
+            city: contact.city,
+            state: contact.state,
+            country: contact.country,
           }))
       }
-    } else if (campaign.audience_type === "sheetdb" || campaign.audience_type === "all") {
-      // Fallback: Get all subscribers from SheetDB
-      const sheetData = await sheetDBService.read()
+    } else if (campaign.audience_type === "all_subscribers" || campaign.audience_type === "all") {
+      // Get all subscribers from Supabase
+      const { data: contacts } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('status', 'active')
 
-      recipients = (sheetData || [])
-        .filter((row: any) => row['Email 1'])
-        .map((row: any) => ({
-          id: row['Email 1'],
-          email: row['Email 1'],
-          name: `${row['First Name'] || ''} ${row['Last Name'] || ''}`.trim() || null,
-          first_name: row['First Name'],
-          last_name: row['Last Name'],
-          company: row['Company'],
-          city: row['Address 1 - City'],
-          state: row['Address 1 - State/Region'],
-          country: row['Address 1 - Country'],
+      recipients = (contacts || [])
+        .filter((contact: any) => contact.email)
+        .map((contact: any) => ({
+          id: contact.id,
+          email: contact.email,
+          name: contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || null,
+          first_name: contact.first_name,
+          last_name: contact.last_name,
+          company: contact.company,
+          city: contact.city,
+          state: contact.state,
+          country: contact.country,
         }))
     }
 
@@ -105,10 +110,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .delete()
       .eq("campaign_id", id)
 
-    // Create campaign recipients records (contact_id can be null for SheetDB contacts)
+    // Create campaign recipients records
     const recipientRecords = recipients.map(contact => ({
       campaign_id: id,
-      contact_id: null, // We don't use Supabase contact IDs anymore
+      contact_id: contact.id || null,
       email: contact.email,
       name: contact.name,
       first_name: contact.first_name || null,
@@ -170,7 +175,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     console.log(`Sending campaign ${id} immediately...`)
 
     // For large campaigns (100+), just return queued and let cron handle all batches
-    // This avoids timeout issues and provides consistent behavior
     const IMMEDIATE_SEND_THRESHOLD = 100
 
     if (recipients.length > IMMEDIATE_SEND_THRESHOLD) {

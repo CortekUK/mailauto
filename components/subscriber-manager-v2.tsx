@@ -269,8 +269,8 @@ export function SubscriberManagerV2() {
         toast.success('Subscriber updated successfully!');
         setEditingContact(null);
         reset();
-        // Real-time will handle the update, but refresh just in case
-        if (!isRealtime) await fetchContacts(false);
+        // Always refresh to ensure UI is in sync
+        await fetchContacts(false);
       } else {
         toast.error(result.error || 'Failed to update subscriber');
       }
@@ -309,8 +309,8 @@ export function SubscriberManagerV2() {
       if (response.ok && result.success) {
         toast.success('Subscriber deleted successfully!');
         setDeletingContact(null);
-        // Real-time will handle the update, but refresh just in case
-        if (!isRealtime) await fetchContacts(false);
+        // Always refresh to ensure UI is in sync
+        await fetchContacts(false);
       } else {
         toast.error(result.error || 'Failed to delete subscriber');
       }

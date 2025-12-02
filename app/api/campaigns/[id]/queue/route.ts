@@ -33,13 +33,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // Get recipients based on audience
     let recipients: any[] = []
 
+    console.log("📧 Queue campaign:", id)
+    console.log("📧 Campaign audience_id:", campaign.audience_id)
+    console.log("📧 Campaign audience_type:", campaign.audience_type)
+
     if (campaign.audience_id) {
       // Get audience with contact_emails
-      const { data: audience } = await supabase
+      const { data: audience, error: audienceError } = await supabase
         .from("audiences")
-        .select("contact_emails")
+        .select("*")
         .eq("id", campaign.audience_id)
         .single()
+
+      console.log("📧 Audience data:", JSON.stringify(audience, null, 2))
+      console.log("📧 Audience error:", audienceError)
 
       if (audience?.contact_emails) {
         // Parse contact_emails (stored as JSON array of emails)
@@ -47,19 +54,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           ? JSON.parse(audience.contact_emails)
           : audience.contact_emails
 
+        console.log("📧 Contact emails from audience:", contactEmails?.length, "emails")
+        console.log("📧 First few emails:", contactEmails?.slice(0, 3))
+
         // Filter to only those emails in the audience
         const emailSet = new Set(contactEmails.map((e: string) => e.toLowerCase()))
 
-        // Fetch contacts from Supabase
-        const { data: contacts } = await supabase
+        // Fetch contacts from Supabase (don't filter by status - use audience emails directly)
+        const { data: contacts, error: contactsError } = await supabase
           .from('contacts')
           .select('*')
-          .eq('status', 'active')
+
+        console.log("📧 Total contacts in Supabase:", contacts?.length)
+        console.log("📧 Contacts error:", contactsError)
+        console.log("📧 First contact sample:", contacts?.[0])
 
         recipients = (contacts || [])
           .filter((contact: any) => {
             const email = contact.email?.toLowerCase()
-            return email && emailSet.has(email)
+            // Include contact if email is in audience and status is not 'unsubscribed'
+            const isInAudience = email && emailSet.has(email)
+            const isNotUnsubscribed = contact.status !== 'unsubscribed'
+            if (email && isInAudience) {
+              console.log(`📧 Contact ${email} - inAudience: ${isInAudience}, status: ${contact.status}`)
+            }
+            return isInAudience && isNotUnsubscribed
           })
           .map((contact: any) => ({
             id: contact.id,
@@ -74,11 +93,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           }))
       }
     } else if (campaign.audience_type === "all_subscribers" || campaign.audience_type === "all") {
-      // Get all subscribers from Supabase
+      // Get all subscribers from Supabase (exclude unsubscribed)
       const { data: contacts } = await supabase
         .from('contacts')
         .select('*')
-        .eq('status', 'active')
+        .or('status.is.null,status.neq.unsubscribed')
 
       recipients = (contacts || [])
         .filter((contact: any) => contact.email)
@@ -95,8 +114,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         }))
     }
 
+    console.log("📧 Final recipients count:", recipients.length)
+    console.log("📧 First recipient:", recipients[0])
+
     if (recipients.length === 0) {
-      return NextResponse.json({ message: "No recipients found for this campaign" }, { status: 400 })
+      return NextResponse.json({
+        message: "No recipients found for this campaign",
+        debug: {
+          audience_id: campaign.audience_id,
+          audience_type: campaign.audience_type
+        }
+      }, { status: 400 })
     }
 
     // Delete existing recipients and events first (in case campaign is being re-queued after editing)

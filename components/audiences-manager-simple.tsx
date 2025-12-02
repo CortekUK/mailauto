@@ -58,11 +58,12 @@ export function AudiencesManagerSimple() {
     loadContacts()
   }, [])
 
-  // Helper function to check if a contact is selected (case-insensitive)
-  const isContactSelected = (contactId: string) => {
-    const normalizedId = contactId.toLowerCase().trim()
-    for (const selectedId of selectedContactIds) {
-      if (selectedId.toLowerCase().trim() === normalizedId) {
+  // Helper function to check if a contact is selected by email (case-insensitive)
+  const isContactSelected = (contactEmail: string) => {
+    if (!contactEmail) return false
+    const normalizedEmail = contactEmail.toLowerCase().trim()
+    for (const selectedEmail of selectedContactIds) {
+      if (selectedEmail.toLowerCase().trim() === normalizedEmail) {
         return true
       }
     }
@@ -114,7 +115,7 @@ export function AudiencesManagerSimple() {
   }
 
   // Calculate actual selected count (contacts that exist and are selected)
-  const actualSelectedCount = contacts.filter(c => isContactSelected(c.id)).length
+  const actualSelectedCount = contacts.filter(c => isContactSelected(c.email)).length
   const actualUnselectedCount = contacts.length - actualSelectedCount
 
   // Track if search has ANY matches across all contacts (regardless of tab)
@@ -295,15 +296,16 @@ export function AudiencesManagerSimple() {
 
     setIsSaving(true)
     try {
-      // Only include contact IDs that actually exist in the contacts list
-      const validContactIds = contacts
+      // Get actual email addresses for selected contacts (not UUIDs!)
+      const validContactEmails = contacts
         .filter(c => isContactSelected(c.id))
-        .map(c => c.id)
+        .map(c => c.email)
+        .filter(email => email) // Filter out any null/undefined emails
 
       const payload = {
         name: name.trim(),
         description: description.trim() || undefined,
-        contact_ids: validContactIds,
+        contact_ids: validContactEmails, // These are actually emails, not IDs
       }
 
       console.log("Saving audience with payload:", payload)
@@ -419,7 +421,7 @@ export function AudiencesManagerSimple() {
     const newSet = new Set(selectedContactIds)
 
     // Check if all filtered contacts are currently selected
-    const allFilteredSelected = filteredContacts.every(c => isContactSelected(c.id))
+    const allFilteredSelected = filteredContacts.every(c => isContactSelected(c.email))
 
     if (allFilteredSelected && filteredContacts.length > 0) {
       // Deselect only the filtered contacts (keep others selected)
@@ -436,8 +438,8 @@ export function AudiencesManagerSimple() {
       // Select all filtered contacts (add to existing selection)
       for (const contact of filteredContacts) {
         // Only add if not already selected
-        if (!isContactSelected(contact.id)) {
-          newSet.add(contact.id)
+        if (!isContactSelected(contact.email)) {
+          newSet.add(contact.email)
         }
       }
     }
@@ -689,7 +691,7 @@ export function AudiencesManagerSimple() {
                     onClick={toggleSelectAll}
                     className="h-9"
                   >
-                    {filteredContacts.length > 0 && filteredContacts.every(c => isContactSelected(c.id)) ? "Deselect All" : "Select All"}
+                    {filteredContacts.length > 0 && filteredContacts.every(c => isContactSelected(c.email)) ? "Deselect All" : "Select All"}
                   </Button>
                 </div>
 
@@ -783,7 +785,7 @@ export function AudiencesManagerSimple() {
                   ) : (
                     <div className="divide-y">
                       {filteredContacts.map((contact, index) => {
-                        const isSelected = isContactSelected(contact.id)
+                        const isSelected = isContactSelected(contact.email)
                         const displayName = contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.email
                         return (
                           <div
@@ -791,11 +793,11 @@ export function AudiencesManagerSimple() {
                             className={`flex items-center gap-3 p-4 hover:bg-accent/50 transition-colors cursor-pointer ${
                               isSelected ? "bg-green-50 dark:bg-green-950/20 border-l-4 border-l-green-500" : ""
                             }`}
-                            onClick={() => toggleContact(contact.id)}
+                            onClick={() => toggleContact(contact.email)}
                           >
                             <Checkbox
                               checked={isSelected}
-                              onCheckedChange={() => toggleContact(contact.id)}
+                              onCheckedChange={() => toggleContact(contact.email)}
                               className="h-5 w-5"
                             />
                             <div className="flex-1 min-w-0">

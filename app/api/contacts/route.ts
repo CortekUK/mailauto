@@ -26,7 +26,7 @@ async function updateAudienceCount() {
       const { count } = await supabaseAdmin
         .from('contacts')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'active');
+        .or('status.is.null,status.neq.unsubscribed');
 
       await supabaseAdmin
         .from('audiences')
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from('contacts')
       .select('*')
-      .eq('status', 'active')
+      .or('status.is.null,status.neq.unsubscribed')
       .order('created_at', { ascending: false });
 
     if (error) throw error;

@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     let query = supabase
       .from('contacts')
       .select('*')
-      .eq('status', 'active')
+      .or('status.is.null,status.neq.unsubscribed')
       .order('created_at', { ascending: false })
 
     const { data: subscribers, error } = await query

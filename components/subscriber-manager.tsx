@@ -18,8 +18,8 @@ import { CSVUpload } from '@/components/csv-upload';
 
 // Validation schema - updated for new SheetDB columns
 const subscriberSchema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
   email: z.string().email('Please enter a valid email address'),
   phone: z.string().optional(),
   company: z.string().optional(),
@@ -264,28 +264,22 @@ export function SubscriberManager() {
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="firstName">First Name *</Label>
+                      <Label htmlFor="firstName">First Name</Label>
                       <Input
                         id="firstName"
                         placeholder="John"
                         {...register('firstName')}
                         disabled={isSubmitting}
                       />
-                      {errors.firstName && (
-                        <p className="text-sm text-red-500">{errors.firstName.message}</p>
-                      )}
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="lastName">Last Name *</Label>
+                      <Label htmlFor="lastName">Last Name</Label>
                       <Input
                         id="lastName"
                         placeholder="Doe"
                         {...register('lastName')}
                         disabled={isSubmitting}
                       />
-                      {errors.lastName && (
-                        <p className="text-sm text-red-500">{errors.lastName.message}</p>
-                      )}
                     </div>
                   </div>
 
@@ -488,28 +482,22 @@ export function SubscriberManager() {
           <form onSubmit={handleSubmit(handleEditSubmit)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-firstName">First Name *</Label>
+                <Label htmlFor="edit-firstName">First Name</Label>
                 <Input
                   id="edit-firstName"
                   placeholder="John"
                   {...register('firstName')}
                   disabled={isSubmitting}
                 />
-                {errors.firstName && (
-                  <p className="text-sm text-red-500">{errors.firstName.message}</p>
-                )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-lastName">Last Name *</Label>
+                <Label htmlFor="edit-lastName">Last Name</Label>
                 <Input
                   id="edit-lastName"
                   placeholder="Doe"
                   {...register('lastName')}
                   disabled={isSubmitting}
                 />
-                {errors.lastName && (
-                  <p className="text-sm text-red-500">{errors.lastName.message}</p>
-                )}
               </div>
             </div>
 

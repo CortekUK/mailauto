@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -10,9 +10,12 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Loader2, UserPlus, Upload, Pencil, Trash2, Search, Users } from 'lucide-react';
+import { Loader2, UserPlus, Upload, Pencil, Trash2, Search, Users, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { CSVUpload } from '@/components/csv-upload';
+import { createClient } from '@/lib/supabase/client';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 // Validation schema - essential fields for subscriber management
 const subscriberSchema = z.object({
@@ -29,6 +32,26 @@ const subscriberSchema = z.object({
 
 type SubscriberFormData = z.infer<typeof subscriberSchema>;
 
+// Supabase contact interface
+interface Contact {
+  id: string;
+  email: string;
+  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  company: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  labels: string | null;
+  status: string;
+  source: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// SheetDB format interface (for API calls)
 interface Subscriber {
   'First Name': string;
   'Last Name': string;
@@ -43,15 +66,19 @@ interface Subscriber {
 }
 
 export function SubscriberManagerV2() {
-  const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null);
-  const [deletingSubscriber, setDeletingSubscriber] = useState<Subscriber | null>(null);
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [deletingContact, setDeletingContact] = useState<Contact | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isRealtime, setIsRealtime] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const supabase = createClient();
 
   const {
     register,
@@ -63,36 +90,96 @@ export function SubscriberManagerV2() {
     resolver: zodResolver(subscriberSchema),
   });
 
-  const fetchSubscribers = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/sheetdb');
-      const result = await response.json();
+  // Fetch contacts from Supabase
+  const fetchContacts = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    else setRefreshing(true);
 
-      if (response.ok && result.success) {
-        const data = Array.isArray(result.data) ? result.data : [];
-        setSubscribers(data);
-      } else {
-        toast.error('Failed to load subscribers');
-        setSubscribers([]);
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
       }
+
+      setContacts(data || []);
     } catch (error) {
-      console.error('Error fetching subscribers:', error);
+      console.error('Error fetching contacts:', error);
       toast.error('An error occurred while loading subscribers');
-      setSubscribers([]);
+      setContacts([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [supabase]);
 
+  // Set up real-time subscription
   useEffect(() => {
-    fetchSubscribers();
-  }, []);
+    // Fetch initial data
+    fetchContacts();
+
+    // Subscribe to real-time changes
+    const channel: RealtimeChannel = supabase
+      .channel('contacts-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'contacts' },
+        (payload) => {
+          console.log('📥 New contact:', payload.new);
+          setContacts((prev) => [payload.new as Contact, ...prev]);
+          toast.success(`New subscriber: ${(payload.new as Contact).email}`);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'contacts' },
+        (payload) => {
+          console.log('📝 Contact updated:', payload.new);
+          setContacts((prev) =>
+            prev.map((c) => (c.id === (payload.new as Contact).id ? (payload.new as Contact) : c))
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'contacts' },
+        (payload) => {
+          console.log('🗑️ Contact deleted:', payload.old);
+          setContacts((prev) => prev.filter((c) => c.id !== (payload.old as Contact).id));
+        }
+      )
+      .subscribe((status) => {
+        console.log('🔌 Realtime status:', status);
+        setIsRealtime(status === 'SUBSCRIBED');
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchContacts, supabase]);
 
   const onSubmit = async (data: SubscriberFormData) => {
     setIsSubmitting(true);
 
     try {
+      // Check if email already exists in Supabase
+      const normalizedEmail = data.email.toLowerCase().trim();
+      const { data: existingContact } = await supabase
+        .from('contacts')
+        .select('id, email')
+        .eq('email', normalizedEmail)
+        .single();
+
+      if (existingContact) {
+        toast.error(`A subscriber with email "${data.email}" already exists`);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Write to SheetDB (which will also sync to Supabase)
       const response = await fetch('/api/sheetdb', {
         method: 'POST',
         headers: {
@@ -121,7 +208,8 @@ export function SubscriberManagerV2() {
         toast.success('Subscriber added successfully!');
         reset();
         setIsAddDialogOpen(false);
-        await fetchSubscribers();
+        // Real-time will handle the update, but refresh just in case
+        if (!isRealtime) await fetchContacts(false);
       } else {
         toast.error(result.error || 'Failed to add subscriber');
       }
@@ -133,25 +221,26 @@ export function SubscriberManagerV2() {
     }
   };
 
-  const handleEditClick = (subscriber: Subscriber) => {
-    setEditingSubscriber(subscriber);
-    setValue('firstName', subscriber['First Name'] || '');
-    setValue('lastName', subscriber['Last Name'] || '');
-    setValue('email', subscriber['Email 1'] || '');
-    setValue('phone', subscriber['Phone 1'] || '');
-    setValue('company', subscriber['Company'] || '');
-    setValue('city', subscriber['Address 1 - City'] || '');
-    setValue('state', subscriber['Address 1 - State/Region'] || '');
-    setValue('country', subscriber['Address 1 - Country'] || '');
-    setValue('labels', subscriber['Labels'] || '');
+  const handleEditClick = (contact: Contact) => {
+    setEditingContact(contact);
+    setValue('firstName', contact.first_name || '');
+    setValue('lastName', contact.last_name || '');
+    setValue('email', contact.email || '');
+    setValue('phone', contact.phone || '');
+    setValue('company', contact.company || '');
+    setValue('city', contact.city || '');
+    setValue('state', contact.state || '');
+    setValue('country', contact.country || '');
+    setValue('labels', contact.labels || '');
   };
 
   const handleEditSubmit = async (data: SubscriberFormData) => {
-    if (!editingSubscriber) return;
+    if (!editingContact) return;
 
     setIsSubmitting(true);
 
     try {
+      // Update in SheetDB (which will also sync to Supabase)
       const response = await fetch('/api/sheetdb', {
         method: 'PUT',
         headers: {
@@ -159,7 +248,7 @@ export function SubscriberManagerV2() {
         },
         body: JSON.stringify({
           columnName: 'Email 1',
-          columnValue: editingSubscriber['Email 1'],
+          columnValue: editingContact.email,
           data: {
             'First Name': data.firstName,
             'Last Name': data.lastName || '',
@@ -178,9 +267,10 @@ export function SubscriberManagerV2() {
 
       if (response.ok && result.success) {
         toast.success('Subscriber updated successfully!');
-        setEditingSubscriber(null);
+        setEditingContact(null);
         reset();
-        await fetchSubscribers();
+        // Real-time will handle the update, but refresh just in case
+        if (!isRealtime) await fetchContacts(false);
       } else {
         toast.error(result.error || 'Failed to update subscriber');
       }
@@ -192,16 +282,17 @@ export function SubscriberManagerV2() {
     }
   };
 
-  const handleDeleteClick = (subscriber: Subscriber) => {
-    setDeletingSubscriber(subscriber);
+  const handleDeleteClick = (contact: Contact) => {
+    setDeletingContact(contact);
   };
 
   const handleDeleteConfirm = async () => {
-    if (!deletingSubscriber) return;
+    if (!deletingContact) return;
 
     setIsDeleting(true);
 
     try {
+      // Delete from SheetDB (which will also delete from Supabase)
       const response = await fetch('/api/sheetdb', {
         method: 'DELETE',
         headers: {
@@ -209,7 +300,7 @@ export function SubscriberManagerV2() {
         },
         body: JSON.stringify({
           columnName: 'Email 1',
-          columnValue: deletingSubscriber['Email 1'],
+          columnValue: deletingContact.email,
         }),
       });
 
@@ -217,8 +308,9 @@ export function SubscriberManagerV2() {
 
       if (response.ok && result.success) {
         toast.success('Subscriber deleted successfully!');
-        setDeletingSubscriber(null);
-        await fetchSubscribers();
+        setDeletingContact(null);
+        // Real-time will handle the update, but refresh just in case
+        if (!isRealtime) await fetchContacts(false);
       } else {
         toast.error(result.error || 'Failed to delete subscriber');
       }
@@ -230,28 +322,62 @@ export function SubscriberManagerV2() {
     }
   };
 
-  const filteredSubscribers = subscribers.filter(
-    (subscriber) => {
-      const searchLower = searchQuery.toLowerCase();
-      const fullName = `${subscriber['First Name'] || ''} ${subscriber['Last Name'] || ''}`.toLowerCase();
-      const email = (subscriber['Email 1'] || '').toLowerCase();
-      const company = (subscriber['Company'] || '').toLowerCase();
-      return fullName.includes(searchLower) || email.includes(searchLower) || company.includes(searchLower);
-    }
-  );
+  const filteredContacts = contacts.filter((contact) => {
+    const trimmedQuery = searchQuery.trim().toLowerCase();
+    if (!trimmedQuery) return true; // Show all if no search query
+
+    const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.toLowerCase();
+    const displayName = (contact.name || '').toLowerCase();
+    const email = (contact.email || '').toLowerCase();
+    const company = (contact.company || '').toLowerCase();
+    const firstName = (contact.first_name || '').toLowerCase();
+    const lastName = (contact.last_name || '').toLowerCase();
+
+    return (
+      fullName.includes(trimmedQuery) ||
+      displayName.includes(trimmedQuery) ||
+      email.includes(trimmedQuery) ||
+      company.includes(trimmedQuery) ||
+      firstName.includes(trimmedQuery) ||
+      lastName.includes(trimmedQuery)
+    );
+  });
 
   return (
     <div className="space-y-6">
       {/* Stats Card */}
       <Card>
         <CardContent className="p-6">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-              <Users className="h-6 w-6 text-primary" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                <Users className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">{contacts.length}</div>
+                <div className="text-sm text-muted-foreground">Total Subscribers</div>
+              </div>
             </div>
-            <div>
-              <div className="text-2xl font-bold">{subscribers.length}</div>
-              <div className="text-sm text-muted-foreground">Total Subscribers</div>
+            <div className="flex items-center gap-2">
+              {isRealtime ? (
+                <Badge variant="outline" className="text-green-600 border-green-600">
+                  <Wifi className="h-3 w-3 mr-1" />
+                  Live
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-yellow-600 border-yellow-600">
+                  <WifiOff className="h-3 w-3 mr-1" />
+                  Offline
+                </Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => fetchContacts(false)}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -263,7 +389,9 @@ export function SubscriberManagerV2() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Subscribers</CardTitle>
-              <CardDescription>Manage your subscriber list</CardDescription>
+              <CardDescription>
+                Manage your subscriber list {isRealtime && '• Updates in real-time'}
+              </CardDescription>
             </div>
             <div className="flex gap-2">
               <Button onClick={() => setIsAddDialogOpen(true)}>
@@ -296,7 +424,7 @@ export function SubscriberManagerV2() {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : filteredSubscribers.length === 0 ? (
+          ) : filteredContacts.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
               <p>No subscribers found.</p>
@@ -314,36 +442,42 @@ export function SubscriberManagerV2() {
                       <TableHead className="hidden md:table-cell">Phone</TableHead>
                       <TableHead className="hidden lg:table-cell">Company</TableHead>
                       <TableHead className="hidden lg:table-cell">Location</TableHead>
+                      <TableHead className="hidden lg:table-cell">Source</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredSubscribers.map((subscriber, index) => {
-                      const fullName = `${subscriber['First Name'] || ''} ${subscriber['Last Name'] || ''}`.trim() || 'Unknown';
-                      const location = [subscriber['Address 1 - City'], subscriber['Address 1 - Country']]
+                    {filteredContacts.map((contact) => {
+                      const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.name || 'Unknown';
+                      const location = [contact.city, contact.country]
                         .filter(Boolean)
                         .join(', ');
 
                       return (
-                        <TableRow key={subscriber['Email 1'] || index}>
+                        <TableRow key={contact.id}>
                           <TableCell className="font-medium">{fullName}</TableCell>
-                          <TableCell>{subscriber['Email 1']}</TableCell>
-                          <TableCell className="hidden md:table-cell">{subscriber['Phone 1'] || '-'}</TableCell>
-                          <TableCell className="hidden lg:table-cell">{subscriber['Company'] || '-'}</TableCell>
+                          <TableCell>{contact.email}</TableCell>
+                          <TableCell className="hidden md:table-cell">{contact.phone || '-'}</TableCell>
+                          <TableCell className="hidden lg:table-cell">{contact.company || '-'}</TableCell>
                           <TableCell className="hidden lg:table-cell">{location || '-'}</TableCell>
+                          <TableCell className="hidden lg:table-cell">
+                            <Badge variant="secondary" className="text-xs">
+                              {contact.source || 'manual'}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => handleEditClick(subscriber)}
+                                onClick={() => handleEditClick(contact)}
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => handleDeleteClick(subscriber)}
+                                onClick={() => handleDeleteClick(contact)}
                                 className="text-destructive hover:text-destructive"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -504,14 +638,17 @@ export function SubscriberManagerV2() {
           <CSVUpload
             onUploadComplete={() => {
               setIsBulkDialogOpen(false);
-              fetchSubscribers();
+              // Trigger a full sync after bulk upload
+              fetch('/api/sync/sheetdb-to-supabase', { method: 'POST' })
+                .then(() => fetchContacts(false))
+                .catch(console.error);
             }}
           />
         </DialogContent>
       </Dialog>
 
       {/* Edit Dialog */}
-      <Dialog open={!!editingSubscriber} onOpenChange={(open) => !open && setEditingSubscriber(null)}>
+      <Dialog open={!!editingContact} onOpenChange={(open) => !open && setEditingContact(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Subscriber</DialogTitle>
@@ -621,7 +758,7 @@ export function SubscriberManagerV2() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setEditingSubscriber(null)}
+                onClick={() => setEditingContact(null)}
                 disabled={isSubmitting}
               >
                 Cancel
@@ -642,7 +779,7 @@ export function SubscriberManagerV2() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deletingSubscriber} onOpenChange={(open) => !open && setDeletingSubscriber(null)}>
+      <Dialog open={!!deletingContact} onOpenChange={(open) => !open && setDeletingContact(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Subscriber</DialogTitle>
@@ -651,15 +788,15 @@ export function SubscriberManagerV2() {
             </DialogDescription>
           </DialogHeader>
 
-          {deletingSubscriber && (
+          {deletingContact && (
             <div className="py-4">
               <div className="rounded-lg border bg-muted/50 p-4">
                 <div className="font-medium">
-                  {`${deletingSubscriber['First Name'] || ''} ${deletingSubscriber['Last Name'] || ''}`.trim() || 'Unknown'}
+                  {`${deletingContact.first_name || ''} ${deletingContact.last_name || ''}`.trim() || deletingContact.name || 'Unknown'}
                 </div>
-                <div className="text-sm text-muted-foreground">{deletingSubscriber['Email 1']}</div>
-                {deletingSubscriber['Company'] && (
-                  <div className="text-xs text-muted-foreground mt-1">{deletingSubscriber['Company']}</div>
+                <div className="text-sm text-muted-foreground">{deletingContact.email}</div>
+                {deletingContact.company && (
+                  <div className="text-xs text-muted-foreground mt-1">{deletingContact.company}</div>
                 )}
               </div>
             </div>
@@ -669,7 +806,7 @@ export function SubscriberManagerV2() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setDeletingSubscriber(null)}
+              onClick={() => setDeletingContact(null)}
               disabled={isDeleting}
             >
               Cancel

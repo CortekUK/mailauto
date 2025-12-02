@@ -62,17 +62,28 @@ export function AudiencesManagerSimple() {
     // Filter contacts based on search query and view filter
     let filtered = contacts
 
-    // Apply search filter
-    if (searchQuery.trim() !== "") {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(
-        (c) =>
-          c.email?.toLowerCase().includes(query) ||
-          c.name?.toLowerCase().includes(query) ||
-          c.first_name?.toLowerCase().includes(query) ||
-          c.last_name?.toLowerCase().includes(query) ||
-          c.company?.toLowerCase().includes(query)
-      )
+    // Apply search filter - robust search with null safety
+    const trimmedQuery = searchQuery.trim().toLowerCase()
+    if (trimmedQuery !== "") {
+      filtered = filtered.filter((c) => {
+        // Build full name from first_name and last_name for better matching
+        const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ').toLowerCase()
+        const displayName = (c.name || '').toLowerCase()
+        const email = (c.email || '').toLowerCase()
+        const company = (c.company || '').toLowerCase()
+        const firstName = (c.first_name || '').toLowerCase()
+        const lastName = (c.last_name || '').toLowerCase()
+
+        // Check if query matches any field
+        return (
+          email.includes(trimmedQuery) ||
+          displayName.includes(trimmedQuery) ||
+          fullName.includes(trimmedQuery) ||
+          firstName.includes(trimmedQuery) ||
+          lastName.includes(trimmedQuery) ||
+          company.includes(trimmedQuery)
+        )
+      })
     }
 
     // Apply view filter (selected/unselected/all)

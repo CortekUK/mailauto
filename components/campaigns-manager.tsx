@@ -59,15 +59,20 @@ export function CampaignsManager() {
   useEffect(() => {
     let filtered = campaigns
 
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(
-        (c) =>
-          c.subject.toLowerCase().includes(query) ||
-          c.from_email.toLowerCase().includes(query) ||
-          c.status.toLowerCase().includes(query),
-      )
+    // Apply search filter - robust search with null safety
+    const trimmedQuery = searchQuery.trim().toLowerCase()
+    if (trimmedQuery) {
+      filtered = filtered.filter((c) => {
+        const subject = (c.subject || '').toLowerCase()
+        const fromEmail = (c.from_email || '').toLowerCase()
+        const status = (c.status || '').toLowerCase()
+
+        return (
+          subject.includes(trimmedQuery) ||
+          fromEmail.includes(trimmedQuery) ||
+          status.includes(trimmedQuery)
+        )
+      })
     }
 
     if (statusFilter !== "all") {

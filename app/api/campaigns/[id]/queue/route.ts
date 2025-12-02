@@ -34,44 +34,72 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     let recipients: any[] = []
 
     if (campaign.audience_id) {
-      // Get audience with contact_emails
+      // Get audience with contact_emails (which may contain IDs or emails)
       const { data: audience } = await supabase
         .from("audiences")
         .select("contact_emails")
         .eq("id", campaign.audience_id)
         .single()
 
-      if (audience?.contact_emails) {
-        // Parse contact_emails (stored as JSON array of emails)
-        const contactEmails = typeof audience.contact_emails === 'string'
+      if (audience?.contact_emails && audience.contact_emails.length > 0) {
+        // Parse contact_emails
+        const contactIdentifiers = typeof audience.contact_emails === 'string'
           ? JSON.parse(audience.contact_emails)
           : audience.contact_emails
 
-        // Filter to only those emails in the audience
-        const emailSet = new Set(contactEmails.map((e: string) => e.toLowerCase()))
+        // Check if identifiers are UUIDs (contact IDs) or emails
+        const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)
+        const firstItem = contactIdentifiers[0]
+        const areContactIds = isUUID(firstItem)
 
-        // Fetch contacts from Supabase
-        const { data: contacts } = await supabase
-          .from('contacts')
-          .select('*')
-          .eq('status', 'active')
+        if (areContactIds) {
+          // Fetch contacts by IDs
+          const { data: contacts } = await supabase
+            .from('contacts')
+            .select('*')
+            .in('id', contactIdentifiers)
+            .eq('status', 'active')
 
-        recipients = (contacts || [])
-          .filter((contact: any) => {
-            const email = contact.email?.toLowerCase()
-            return email && emailSet.has(email)
-          })
-          .map((contact: any) => ({
-            id: contact.id,
-            email: contact.email,
-            name: contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || null,
-            first_name: contact.first_name,
-            last_name: contact.last_name,
-            company: contact.company,
-            city: contact.city,
-            state: contact.state,
-            country: contact.country,
-          }))
+          recipients = (contacts || [])
+            .filter((contact: any) => contact.email)
+            .map((contact: any) => ({
+              id: contact.id,
+              email: contact.email,
+              name: contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || null,
+              first_name: contact.first_name,
+              last_name: contact.last_name,
+              company: contact.company,
+              city: contact.city,
+              state: contact.state,
+              country: contact.country,
+            }))
+        } else {
+          // Legacy: identifiers are emails
+          const emailSet = new Set(contactIdentifiers.map((e: string) => e.toLowerCase()))
+
+          // Fetch contacts from Supabase
+          const { data: contacts } = await supabase
+            .from('contacts')
+            .select('*')
+            .eq('status', 'active')
+
+          recipients = (contacts || [])
+            .filter((contact: any) => {
+              const email = contact.email?.toLowerCase()
+              return email && emailSet.has(email)
+            })
+            .map((contact: any) => ({
+              id: contact.id,
+              email: contact.email,
+              name: contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || null,
+              first_name: contact.first_name,
+              last_name: contact.last_name,
+              company: contact.company,
+              city: contact.city,
+              state: contact.state,
+              country: contact.country,
+            }))
+        }
       }
     } else if (campaign.audience_type === "all_subscribers" || campaign.audience_type === "all") {
       // Get all subscribers from Supabase

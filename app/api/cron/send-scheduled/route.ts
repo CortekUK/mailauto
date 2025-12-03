@@ -20,13 +20,12 @@ export async function GET(request: Request) {
     const nowISO = now.toISOString()
     console.log(`🔍 Checking for scheduled campaigns at ${now.toLocaleString()} (${nowISO})`)
 
-    // Find campaigns that are queued and scheduled for now or past
+    // Find campaigns that are queued or sending (for multi-batch) and scheduled for now or past
     const { data: campaigns, error } = await supabaseAdmin
       .from('campaigns')
-      .select('id, subject, scheduled_at')
-      .eq('status', 'queued')
-      .not('scheduled_at', 'is', null)
-      .lte('scheduled_at', nowISO)
+      .select('id, subject, scheduled_at, status')
+      .in('status', ['queued', 'sending'])
+      .or(`scheduled_at.is.null,scheduled_at.lte.${nowISO}`)
 
     if (error) {
       console.error('Error fetching scheduled campaigns:', error)

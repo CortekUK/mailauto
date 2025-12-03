@@ -11,7 +11,9 @@
       "Bash(git commit:*)",
       "Bash(curl:*)",
       "Bash(npx tsx:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(/usr/local/bin/npm run build)",
+      "Bash(source ~/.zshrc)"
     ],
     "deny": [],
     "ask": []

@@ -23,7 +23,11 @@ export interface SendCampaignResult {
 }
 
 // Maximum emails to send per batch (to avoid timeout)
+// With 60s timeout on Vercel Pro and ~200ms per email, we can safely do 100
 const BATCH_SIZE = 100;
+
+// Number of emails to send concurrently (parallel processing)
+const CONCURRENT_SENDS = 5;
 
 export async function sendCampaignEmails(campaignId: string): Promise<SendCampaignResult> {
   try {
@@ -40,11 +44,11 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
       return { success: false, error: 'Campaign not found' };
     }
 
-    // Check if campaign is in queued status
-    if (campaign.status !== 'queued') {
+    // Check if campaign is in queued or sending status (sending = multi-batch in progress)
+    if (campaign.status !== 'queued' && campaign.status !== 'sending') {
       return {
         success: false,
-        error: `Campaign must be in 'queued' status. Current status: ${campaign.status}`
+        error: `Campaign must be in 'queued' or 'sending' status. Current status: ${campaign.status}`
       };
     }
 
@@ -124,11 +128,12 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
       return { success: false, error: 'No pending recipients found for this campaign' };
     }
 
-    // Step 4: Send emails to all recipients
+    // Step 4: Send emails to all recipients using concurrent processing
     let sentCount = 0;
     let failedCount = 0;
 
-    for (const recipient of recipients) {
+    // Helper function to send a single email
+    async function sendToRecipient(recipient: typeof recipients[0]): Promise<{ success: boolean; email: string }> {
       try {
         const variables = {
           // Contact-specific variables
@@ -183,8 +188,8 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
               email: recipient.email
             });
 
-          sentCount++;
           console.log(`✅ Sent to ${recipient.email}`);
+          return { success: true, email: recipient.email };
         } else {
           await supabaseAdmin
             .from('campaign_recipients')
@@ -204,16 +209,11 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
               email: recipient.email
             });
 
-          failedCount++;
           console.error(`❌ Failed to send to ${recipient.email}:`, result.error);
+          return { success: false, email: recipient.email };
         }
-
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
-
       } catch (error: any) {
         console.error(`Error sending to ${recipient.email}:`, error);
-        failedCount++;
 
         await supabaseAdmin
           .from('campaign_recipients')
@@ -224,6 +224,24 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
             error_message: error.message
           })
           .eq('id', recipient.recipient_id);
+
+        return { success: false, email: recipient.email };
+      }
+    }
+
+    // Process recipients in chunks of CONCURRENT_SENDS for parallel execution
+    for (let i = 0; i < recipients.length; i += CONCURRENT_SENDS) {
+      const chunk = recipients.slice(i, i + CONCURRENT_SENDS);
+      const results = await Promise.all(chunk.map(sendToRecipient));
+
+      results.forEach(r => {
+        if (r.success) sentCount++;
+        else failedCount++;
+      });
+
+      // Small delay between chunks to avoid rate limiting
+      if (i + CONCURRENT_SENDS < recipients.length) {
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
     }
 
@@ -232,7 +250,7 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
     // Otherwise, mark as 'sent' or 'failed'
 
     if (hasMoreRecipients) {
-      // Keep as 'queued' so cron job picks it up again for next batch
+      // Keep as 'sending' so cron job picks it up again for next batch
       // Update counts but don't change status
       const { data: currentCampaign } = await supabaseAdmin
         .from('campaigns')
@@ -243,13 +261,13 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
       await supabaseAdmin
         .from('campaigns')
         .update({
-          status: 'queued', // Stay queued for next batch
+          status: 'sending', // Stay sending for next batch
           sent_count: (currentCampaign?.sent_count || 0) + sentCount,
           failed_count: (currentCampaign?.failed_count || 0) + failedCount
         })
         .eq('id', campaignId);
 
-      console.log(`📦 Batch completed. Sent: ${sentCount}, Failed: ${failedCount}. More recipients pending.`);
+      console.log(`📦 Batch completed. Sent: ${sentCount}, Failed: ${failedCount}. ${allRecipients.length - BATCH_SIZE} recipients remaining for next batch.`);
     } else {
       // All recipients processed - finalize campaign
       const { data: currentCampaign } = await supabaseAdmin

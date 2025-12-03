@@ -251,7 +251,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <h1 className="text-balance text-3xl font-semibold tracking-tight">{campaign.subject}</h1>
-              <Badge className={statusColors[campaign.status] || statusColors.draft}>{campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}</Badge>
+              <Badge className={statusColors[campaign.status || 'draft'] || statusColors.draft}>{(campaign.status || 'draft').charAt(0).toUpperCase() + (campaign.status || 'draft').slice(1)}</Badge>
             </div>
             <p className="text-sm text-muted-foreground">
               To: {campaign.audiences?.name || `${recipients.length} recipients`} • From: {campaign.from_name} ({campaign.from_email})
@@ -481,7 +481,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                                   : "border-amber-200 bg-amber-50 text-amber-700"
                             }
                           >
-                            {recipient.delivery_status.charAt(0).toUpperCase() + recipient.delivery_status.slice(1)}
+                            {(recipient.delivery_status || 'pending').charAt(0).toUpperCase() + (recipient.delivery_status || 'pending').slice(1)}
                           </Badge>
                           {recipient.error && <div className="mt-1 text-xs text-red-600">{recipient.error}</div>}
                         </TableCell>

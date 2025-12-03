@@ -410,13 +410,6 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
             <div className="flex items-center justify-between">
               <div className="flex gap-2">
                 <Button
-                  variant={recipientFilter === "sent" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setRecipientFilter("sent")}
-                >
-                  Sent
-                </Button>
-                <Button
                   variant={recipientFilter === "all" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setRecipientFilter("all")}
@@ -424,24 +417,39 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                   All ({recipients.length})
                 </Button>
                 <Button
-                  variant={recipientFilter === "failed" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setRecipientFilter("failed")}
-                >
-                  Failed
-                </Button>
-                <Button
                   variant={recipientFilter === "pending" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setRecipientFilter("pending")}
                 >
-                  Pending
+                  Pending ({recipients.filter(r => r.delivery_status === "pending").length})
+                </Button>
+                <Button
+                  variant={recipientFilter === "sent" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setRecipientFilter("sent")}
+                >
+                  Sent ({recipients.filter(r => r.delivery_status === "sent" || r.delivery_status === "delivered").length})
+                </Button>
+                <Button
+                  variant={recipientFilter === "failed" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setRecipientFilter("failed")}
+                >
+                  Failed ({recipients.filter(r => r.delivery_status === "failed" || r.delivery_status === "bounced").length})
                 </Button>
               </div>
-              <Button variant="outline" size="sm" onClick={exportRecipientsCSV}>
-                <Download className="mr-2 h-4 w-4" />
-                Export CSV
-              </Button>
+              <div className="flex gap-2">
+                {recipients.filter(r => r.delivery_status === "failed" || r.delivery_status === "bounced").length > 0 && (
+                  <Button variant="default" size="sm" onClick={handleResendFailures} disabled={actionLoading}>
+                    {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
+                    Resend Failed ({recipients.filter(r => r.delivery_status === "failed" || r.delivery_status === "bounced").length})
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={exportRecipientsCSV}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export CSV
+                </Button>
+              </div>
             </div>
 
             <Card>

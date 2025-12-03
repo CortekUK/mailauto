@@ -273,7 +273,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               {campaign.status === "sending" && (
                 <span className="flex items-center gap-1.5">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
-                  Currently sending...
+                  Sending in progress... {stats.sent > 0 && `(${stats.sent} sent${stats.failures > 0 ? `, ${stats.failures} failed` : ''})`}
                 </span>
               )}
               {campaign.created_at && (

@@ -23,11 +23,16 @@ export interface SendCampaignResult {
 }
 
 // Maximum emails to send per batch (to avoid timeout)
-// With 60s timeout on Vercel Pro and ~200ms per email, we can safely do 100
-const BATCH_SIZE = 100;
+// With 60s timeout on Vercel Pro and 10 concurrent sends at ~300ms each
+// We can process ~150-200 emails per batch safely
+const BATCH_SIZE = 150;
 
 // Number of emails to send concurrently (parallel processing)
-const CONCURRENT_SENDS = 5;
+// Brevo allows high concurrency, 10 parallel sends is safe
+const CONCURRENT_SENDS = 10;
+
+// Maximum retries for transient failures
+const MAX_RETRIES = 2;
 
 export async function sendCampaignEmails(campaignId: string): Promise<SendCampaignResult> {
   try {
@@ -132,101 +137,115 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
     let sentCount = 0;
     let failedCount = 0;
 
-    // Helper function to send a single email
+    // Helper function to send a single email with retry logic
     async function sendToRecipient(recipient: typeof recipients[0]): Promise<{ success: boolean; email: string }> {
-      try {
-        const variables = {
-          // Contact-specific variables
-          first_name: recipient.first_name || recipient.name?.split(' ')[0] || '',
-          last_name: recipient.last_name || recipient.name?.split(' ').slice(1).join(' ') || '',
-          name: recipient.name || `${recipient.first_name || ''} ${recipient.last_name || ''}`.trim(),
-          email: recipient.email,
-          phone: recipient.phone || '',
-          company: recipient.company || '',
-          city: recipient.city || '',
-          state: recipient.state || '',
-          country: recipient.country || '',
-          // Default settings variables
-          book_link: defaultSettings.book_link,
-          discount_code: defaultSettings.discount_code,
-          brand_logo_url: defaultSettings.brand_logo_url,
-        };
+      const variables = {
+        // Contact-specific variables
+        first_name: recipient.first_name || recipient.name?.split(' ')[0] || '',
+        last_name: recipient.last_name || recipient.name?.split(' ').slice(1).join(' ') || '',
+        name: recipient.name || `${recipient.first_name || ''} ${recipient.last_name || ''}`.trim(),
+        email: recipient.email,
+        phone: recipient.phone || '',
+        company: recipient.company || '',
+        city: recipient.city || '',
+        state: recipient.state || '',
+        country: recipient.country || '',
+        // Default settings variables
+        book_link: defaultSettings.book_link,
+        discount_code: defaultSettings.discount_code,
+        brand_logo_url: defaultSettings.brand_logo_url,
+      };
 
-        const personalizedSubject = replaceTemplateVariables(campaign.subject, variables);
-        // Replace variables and add inline styles for email compatibility
-        const htmlWithVariables = replaceTemplateVariables(campaign.html, variables);
-        const personalizedHtml = processHtmlForEmail(htmlWithVariables);
-        const personalizedText = campaign.text_fallback
-          ? replaceTemplateVariables(campaign.text_fallback, variables)
-          : undefined;
+      const personalizedSubject = replaceTemplateVariables(campaign.subject, variables);
+      const htmlWithVariables = replaceTemplateVariables(campaign.html, variables);
+      const personalizedHtml = processHtmlForEmail(htmlWithVariables);
+      const personalizedText = campaign.text_fallback
+        ? replaceTemplateVariables(campaign.text_fallback, variables)
+        : undefined;
 
-        const result = await sendEmail({
-          to: recipient.email,
-          from: campaign.from_email,
-          subject: personalizedSubject,
-          html: personalizedHtml,
-          text: personalizedText,
-          attachments: campaign.attachments || undefined
+      // Retry loop for transient failures
+      let lastError = '';
+      for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+        try {
+          const result = await sendEmail({
+            to: recipient.email,
+            from: campaign.from_email,
+            subject: personalizedSubject,
+            html: personalizedHtml,
+            text: personalizedText,
+            attachments: campaign.attachments || undefined
+          });
+
+          if (result.success) {
+            await supabaseAdmin
+              .from('campaign_recipients')
+              .update({
+                status: 'sent',
+                delivery_status: 'sent',
+                sent_at: new Date().toISOString(),
+                provider_message_id: result.messageId
+              })
+              .eq('id', recipient.recipient_id);
+
+            await supabaseAdmin
+              .from('campaign_events')
+              .insert({
+                campaign_id: campaignId,
+                event_type: 'sent',
+                email: recipient.email
+              });
+
+            console.log(`✅ Sent to ${recipient.email}${attempt > 1 ? ` (attempt ${attempt})` : ''}`);
+            return { success: true, email: recipient.email };
+          } else {
+            lastError = result.error || 'Unknown error';
+            // Check if error is retryable (rate limit, timeout, etc)
+            const isRetryable = lastError.includes('rate') ||
+                               lastError.includes('timeout') ||
+                               lastError.includes('429') ||
+                               lastError.includes('503') ||
+                               lastError.includes('temporarily');
+
+            if (isRetryable && attempt <= MAX_RETRIES) {
+              console.log(`⏳ Retrying ${recipient.email} (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`);
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+              continue;
+            }
+            break;
+          }
+        } catch (error: any) {
+          lastError = error.message || 'Unknown error';
+          if (attempt <= MAX_RETRIES) {
+            console.log(`⏳ Retrying ${recipient.email} after error (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            continue;
+          }
+          break;
+        }
+      }
+
+      // All retries exhausted - mark as failed
+      console.error(`❌ Failed to send to ${recipient.email} after ${MAX_RETRIES + 1} attempts:`, lastError);
+
+      await supabaseAdmin
+        .from('campaign_recipients')
+        .update({
+          status: 'failed',
+          delivery_status: 'failed',
+          failed_at: new Date().toISOString(),
+          error_message: lastError
+        })
+        .eq('id', recipient.recipient_id);
+
+      await supabaseAdmin
+        .from('campaign_events')
+        .insert({
+          campaign_id: campaignId,
+          event_type: 'failed',
+          email: recipient.email
         });
 
-        if (result.success) {
-          await supabaseAdmin
-            .from('campaign_recipients')
-            .update({
-              status: 'sent',
-              delivery_status: 'sent',
-              sent_at: new Date().toISOString(),
-              provider_message_id: result.messageId
-            })
-            .eq('id', recipient.recipient_id);
-
-          await supabaseAdmin
-            .from('campaign_events')
-            .insert({
-              campaign_id: campaignId,
-              event_type: 'sent',
-              email: recipient.email
-            });
-
-          console.log(`✅ Sent to ${recipient.email}`);
-          return { success: true, email: recipient.email };
-        } else {
-          await supabaseAdmin
-            .from('campaign_recipients')
-            .update({
-              status: 'failed',
-              delivery_status: 'failed',
-              failed_at: new Date().toISOString(),
-              error_message: result.error
-            })
-            .eq('id', recipient.recipient_id);
-
-          await supabaseAdmin
-            .from('campaign_events')
-            .insert({
-              campaign_id: campaignId,
-              event_type: 'failed',
-              email: recipient.email
-            });
-
-          console.error(`❌ Failed to send to ${recipient.email}:`, result.error);
-          return { success: false, email: recipient.email };
-        }
-      } catch (error: any) {
-        console.error(`Error sending to ${recipient.email}:`, error);
-
-        await supabaseAdmin
-          .from('campaign_recipients')
-          .update({
-            status: 'failed',
-            delivery_status: 'failed',
-            failed_at: new Date().toISOString(),
-            error_message: error.message
-          })
-          .eq('id', recipient.recipient_id);
-
-        return { success: false, email: recipient.email };
-      }
+      return { success: false, email: recipient.email };
     }
 
     // Process recipients in chunks of CONCURRENT_SENDS for parallel execution

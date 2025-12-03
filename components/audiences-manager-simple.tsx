@@ -683,15 +683,40 @@ export function AudiencesManagerSimple() {
                       <span className="font-semibold text-primary">{actualSelectedCount}</span> of {contacts.length} selected
                     </p>
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={toggleSelectAll}
-                    className="h-9"
-                  >
-                    {filteredContacts.length > 0 && filteredContacts.every(c => isContactSelected(c.email)) ? "Deselect All" : "Select All"}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        // Select all test contacts (those with emails containing +test or test@)
+                        const testContacts = contacts.filter(c =>
+                          c.email?.includes('+test') ||
+                          c.email?.includes('test@') ||
+                          c.email?.startsWith('test')
+                        );
+                        const newSelected = new Set(selectedContactIds);
+                        testContacts.forEach(c => newSelected.add(c.email));
+                        setSelectedContactIds(newSelected);
+                        toast({
+                          title: "Test users selected",
+                          description: `Selected ${testContacts.length} test contacts`,
+                        });
+                      }}
+                      className="h-9"
+                    >
+                      Select Test Users
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={toggleSelectAll}
+                      className="h-9"
+                    >
+                      {filteredContacts.length > 0 && filteredContacts.every(c => isContactSelected(c.email)) ? "Deselect All" : "Select All"}
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Filter Tabs */}

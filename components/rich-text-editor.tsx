@@ -703,11 +703,11 @@ export function RichTextEditor({
           size="sm"
           onMouseDown={(e) => {
             e.preventDefault()
-            insertVariable("{{name}}")
+            insertVariable("{{first_name}}")
           }}
           className="h-8 text-xs font-mono"
         >
-          + name
+          + first_name
         </Button>
         <Button
           type="button"

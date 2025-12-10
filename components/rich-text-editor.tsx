@@ -315,9 +315,34 @@ export function RichTextEditor({
   }
 
   const insertLink = () => {
-    const url = prompt("Enter URL:")
-    if (url) {
-      execCommand("createLink", url)
+    // Check if there's selected text
+    const selection = window.getSelection()
+    const selectedText = selection?.toString().trim()
+
+    if (selectedText) {
+      // If text is selected, just ask for URL
+      const url = prompt("Enter URL for the selected text:")
+      if (url) {
+        // Ensure URL has protocol
+        const finalUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`
+        execCommand("createLink", finalUrl)
+      }
+    } else {
+      // No text selected - ask for both display text and URL
+      const displayText = prompt("Enter the text to display (e.g., 'Click here', 'My Website'):")
+      if (!displayText) return
+
+      const url = prompt("Enter URL (e.g., https://example.com):")
+      if (!url) return
+
+      // Ensure URL has protocol
+      const finalUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`
+
+      // Insert the link HTML at cursor position
+      editorRef.current?.focus()
+      const linkHtml = `<a href="${finalUrl}" target="_blank" rel="noopener noreferrer">${displayText}</a>`
+      document.execCommand("insertHTML", false, linkHtml)
+      handleInput()
     }
   }
 

@@ -145,3 +145,31 @@
     }
   }
 }
+
+/* Rich text editor styles */
+.rich-text-editor-content a {
+  color: #3b82f6 !important;
+  text-decoration: underline !important;
+  background-color: rgba(59, 130, 246, 0.15) !important;
+  padding: 1px 4px !important;
+  border-radius: 3px !important;
+  cursor: pointer !important;
+}
+
+.rich-text-editor-content a:hover {
+  background-color: rgba(59, 130, 246, 0.25) !important;
+}
+
+.rich-text-editor-content a:hover::after {
+  content: "Ctrl+Click to open";
+  position: absolute;
+  background: #1f2937;
+  color: white;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-left: 8px;
+  margin-top: -2px;
+  white-space: nowrap;
+  z-index: 1000;
+}

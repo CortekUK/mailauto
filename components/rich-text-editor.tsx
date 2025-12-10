@@ -28,6 +28,15 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 export interface Attachment {
   id: string
@@ -74,6 +83,13 @@ export function RichTextEditor({
   const [isFocused, setIsFocused] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const { toast } = useToast()
+
+  // Link dialog state
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false)
+  const [linkDisplayText, setLinkDisplayText] = useState("")
+  const [linkUrl, setLinkUrl] = useState("")
+  const [hasSelectedText, setHasSelectedText] = useState(false)
+  const savedSelectionRef = useRef<Range | null>(null)
 
   // Track active formatting states
   const [activeFormats, setActiveFormats] = useState({
@@ -315,35 +331,48 @@ export function RichTextEditor({
   }
 
   const insertLink = () => {
-    // Check if there's selected text
+    // Save current selection before opening dialog
     const selection = window.getSelection()
-    const selectedText = selection?.toString().trim()
+    if (selection && selection.rangeCount > 0) {
+      savedSelectionRef.current = selection.getRangeAt(0).cloneRange()
+    }
 
-    if (selectedText) {
-      // If text is selected, just ask for URL
-      const url = prompt("Enter URL for the selected text:")
-      if (url) {
-        // Ensure URL has protocol
-        const finalUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`
-        execCommand("createLink", finalUrl)
-      }
+    const selectedText = selection?.toString().trim() || ""
+    setHasSelectedText(!!selectedText)
+    setLinkDisplayText(selectedText)
+    setLinkUrl("")
+    setLinkDialogOpen(true)
+  }
+
+  const handleInsertLink = () => {
+    if (!linkUrl) return
+
+    // Ensure URL has protocol
+    const finalUrl = linkUrl.startsWith('http://') || linkUrl.startsWith('https://') ? linkUrl : `https://${linkUrl}`
+
+    editorRef.current?.focus()
+
+    // Restore saved selection
+    if (savedSelectionRef.current) {
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(savedSelectionRef.current)
+    }
+
+    if (hasSelectedText && linkDisplayText) {
+      // If text was selected, wrap it with link
+      execCommand("createLink", finalUrl)
     } else {
-      // No text selected - ask for both display text and URL
-      const displayText = prompt("Enter the text to display (e.g., 'Click here', 'My Website'):")
-      if (!displayText) return
-
-      const url = prompt("Enter URL (e.g., https://example.com):")
-      if (!url) return
-
-      // Ensure URL has protocol
-      const finalUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`
-
-      // Insert the link HTML at cursor position
-      editorRef.current?.focus()
+      // Insert new link with display text
+      const displayText = linkDisplayText || linkUrl
       const linkHtml = `<a href="${finalUrl}" target="_blank" rel="noopener noreferrer">${displayText}</a>`
       document.execCommand("insertHTML", false, linkHtml)
       handleInput()
     }
+
+    setLinkDialogOpen(false)
+    setLinkDisplayText("")
+    setLinkUrl("")
   }
 
   const insertVariable = (variable: string) => {
@@ -792,6 +821,16 @@ export function RichTextEditor({
           onInput={handleInput}
           onPaste={handlePaste}
           onClick={(e) => {
+            // Ctrl+Click or Cmd+Click on a link opens it in new tab
+            const target = e.target as HTMLElement
+            if (target.tagName === 'A' && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault()
+              const href = target.getAttribute('href')
+              if (href) {
+                window.open(href, '_blank', 'noopener,noreferrer')
+              }
+              return
+            }
             handleEditorClick(e)
             updateActiveFormats()
           }}
@@ -801,7 +840,7 @@ export function RichTextEditor({
             updateActiveFormats()
           }}
           onBlur={() => setIsFocused(false)}
-          className="min-h-[300px] p-4 pt-6 pb-6 max-w-none focus:outline-none"
+          className="min-h-[300px] p-4 pt-6 pb-6 max-w-none focus:outline-none rich-text-editor-content"
           style={{
             lineHeight: "1.6",
             fontFamily: "inherit",
@@ -969,8 +1008,14 @@ export function RichTextEditor({
           font-family: monospace;
         }
         [contenteditable] a {
-          color: hsl(var(--primary));
+          color: #3b82f6;
           text-decoration: underline;
+          background-color: rgba(59, 130, 246, 0.1);
+          padding: 0 2px;
+          border-radius: 2px;
+        }
+        [contenteditable] a:hover {
+          background-color: rgba(59, 130, 246, 0.2);
         }
         [contenteditable] strong {
           font-weight: bold;
@@ -1009,6 +1054,51 @@ export function RichTextEditor({
           pointer-events: none;
         }
       `}</style>
+
+      {/* Link Insert Dialog */}
+      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Insert Link</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {!hasSelectedText && (
+              <div className="space-y-2">
+                <Label htmlFor="link-text">Display Text</Label>
+                <Input
+                  id="link-text"
+                  placeholder="e.g., Click here, My Website"
+                  value={linkDisplayText}
+                  onChange={(e) => setLinkDisplayText(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="link-url">URL</Label>
+              <Input
+                id="link-url"
+                placeholder="e.g., https://example.com"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    handleInsertLink()
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleInsertLink} disabled={!linkUrl}>
+              Insert Link
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

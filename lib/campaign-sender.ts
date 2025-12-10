@@ -137,13 +137,22 @@ export async function sendCampaignEmails(campaignId: string): Promise<SendCampai
     let sentCount = 0;
     let failedCount = 0;
 
+    // Helper function to capitalize first letter
+    function capitalizeFirst(str: string): string {
+      if (!str) return '';
+      return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+    }
+
     // Helper function to send a single email with retry logic
     async function sendToRecipient(recipient: typeof recipients[0]): Promise<{ success: boolean; email: string }> {
+      const rawFirstName = recipient.first_name || recipient.name?.split(' ')[0] || '';
+      const rawLastName = recipient.last_name || recipient.name?.split(' ').slice(1).join(' ') || '';
+
       const variables = {
-        // Contact-specific variables
-        first_name: recipient.first_name || recipient.name?.split(' ')[0] || '',
-        last_name: recipient.last_name || recipient.name?.split(' ').slice(1).join(' ') || '',
-        name: recipient.name || `${recipient.first_name || ''} ${recipient.last_name || ''}`.trim(),
+        // Contact-specific variables (capitalize first letter of names)
+        first_name: capitalizeFirst(rawFirstName),
+        last_name: capitalizeFirst(rawLastName),
+        name: recipient.name || `${capitalizeFirst(rawFirstName)} ${capitalizeFirst(rawLastName)}`.trim(),
         email: recipient.email,
         phone: recipient.phone || '',
         company: recipient.company || '',
